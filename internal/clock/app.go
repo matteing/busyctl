@@ -4,6 +4,7 @@ package clock
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -18,7 +19,8 @@ const (
 	clockFont     = "extra_large"
 	periodFont    = "small"
 	visibleColor  = "#FFFFFFFF"
-	hiddenColor   = "#FFFFFF00"
+	colonFrame    = 40 * time.Millisecond
+	colonMinAlpha = 72
 )
 
 // Config contains the device and clock-face options supplied by busyctl.
@@ -32,14 +34,16 @@ type Config struct {
 	BlinkColon  bool
 }
 
-// DefaultConfig matches the referenced community clock: 24-hour local time,
-// seconds visible, and steady colons.
+// DefaultConfig uses a compact 12-hour face with AM/PM, no seconds, and steady
+// colons. The original 24-hour face remains available through CLI flags.
 func DefaultConfig() Config {
 	return Config{
 		Host:        envOr("BUSYBAR_HOST", "10.0.4.20"),
 		Token:       envOr("BUSYBAR_TOKEN", ""),
 		Priority:    100,
-		ShowSeconds: true,
+		TwelveHour:  true,
+		ShowSeconds: false,
+		BlinkColon:  true,
 	}
 }
 
@@ -149,10 +153,8 @@ func clockFrame(now time.Time, config Config) ([]barapi.Element, string) {
 	}
 
 	colonColor := visibleColor
-	colonOn := true
-	if config.BlinkColon && now.Nanosecond() >= int(500*time.Millisecond) {
-		colonColor = hiddenColor
-		colonOn = false
+	if config.BlinkColon {
+		colonColor = fadingColonColor(now)
 	}
 	segments := []textSegment{
 		newSegment("hours", fmt.Sprintf("%02d", hour), clockFont, visibleColor, 0),
@@ -194,8 +196,20 @@ func clockFrame(now time.Time, config Config) ([]barapi.Element, string) {
 		})
 		left += segment.width
 	}
-	state := fmt.Sprintf("%02d:%02d:%02d:%s:%t", hour, now.Minute(), now.Second(), period, colonOn)
+	state := fmt.Sprintf("%02d:%02d:%02d:%s:%s", hour, now.Minute(), now.Second(), period, colonColor)
 	return elements, state
+}
+
+// fadingColonColor completes one smooth brightness cycle per second. It is
+// brightest exactly on each second boundary and reaches a dim, still-visible
+// floor halfway through, making elapsed seconds readable without a hard blink.
+func fadingColonColor(now time.Time) string {
+	phase := float64(now.Nanosecond()) / float64(time.Second)
+	wave := 0.5 + 0.5*math.Cos(2*math.Pi*phase)
+	// The epsilon keeps mathematically symmetric quarter points identical despite
+	// tiny floating-point error in cos(π/2) versus cos(3π/2).
+	alpha := colonMinAlpha + int(math.Floor(float64(255-colonMinAlpha)*wave+0.5+1e-9))
+	return fmt.Sprintf("#FFFFFF%02X", alpha)
 }
 
 func newSegment(id, text, font, color string, gap int) textSegment {
@@ -239,7 +253,7 @@ func nextDelay(now time.Time, config Config) time.Duration {
 		precision = time.Second
 	}
 	if config.BlinkColon {
-		precision = 500 * time.Millisecond
+		precision = colonFrame
 	}
 	delay := now.Truncate(precision).Add(precision).Sub(now)
 	if delay <= 0 {

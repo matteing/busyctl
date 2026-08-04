@@ -11,7 +11,11 @@ func TestDefaultFrameMatchesReferenceClock(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.August, 4, 10, 26, 9, 0, time.Local)
-	elements, _ := clockFrame(now, DefaultConfig())
+	config := DefaultConfig()
+	config.TwelveHour = false
+	config.ShowSeconds = true
+	config.BlinkColon = false
+	elements, _ := clockFrame(now, config)
 	if got := joinedText(elements); got != "10:26:09" {
 		t.Fatalf("clock text = %q, want 10:26:09", got)
 	}
@@ -29,11 +33,24 @@ func TestDefaultFrameMatchesReferenceClock(t *testing.T) {
 	}
 }
 
+func TestDefaultsUseMeridiemWithoutSeconds(t *testing.T) {
+	t.Parallel()
+
+	config := DefaultConfig()
+	if !config.TwelveHour || config.ShowSeconds || !config.BlinkColon {
+		t.Fatalf("clock defaults = twelve-hour %t, seconds %t, fading colon %t", config.TwelveHour, config.ShowSeconds, config.BlinkColon)
+	}
+	elements, _ := clockFrame(time.Date(2026, time.August, 4, 22, 26, 9, 0, time.Local), config)
+	if got := joinedText(elements); got != "10:26PM" {
+		t.Fatalf("default clock text = %q, want 10:26PM", got)
+	}
+}
+
 func TestTwelveHourFrameUsesNativeMeridiem(t *testing.T) {
 	t.Parallel()
 
 	config := DefaultConfig()
-	config.TwelveHour = true
+	config.ShowSeconds = true
 	now := time.Date(2026, time.August, 4, 13, 5, 9, 0, time.Local)
 	elements, _ := clockFrame(now, config)
 	if got := joinedText(elements[:5]); got != "01:05:09" {
@@ -52,7 +69,7 @@ func TestSecondsCanBeHidden(t *testing.T) {
 	t.Parallel()
 
 	config := DefaultConfig()
-	config.ShowSeconds = false
+	config.TwelveHour = false
 	elements, _ := clockFrame(time.Date(2026, time.August, 4, 23, 58, 59, 0, time.Local), config)
 	if got := joinedText(elements); got != "23:58" {
 		t.Fatalf("clock text = %q, want 23:58", got)
@@ -62,23 +79,27 @@ func TestSecondsCanBeHidden(t *testing.T) {
 	}
 }
 
-func TestBlinkingColonsDoNotMoveDigits(t *testing.T) {
+func TestFadingColonsCompleteSmoothSecondCycleWithoutMovingDigits(t *testing.T) {
 	t.Parallel()
 
 	config := DefaultConfig()
 	config.BlinkColon = true
-	base := time.Date(2026, time.August, 4, 10, 26, 9, int(100*time.Millisecond), time.Local)
-	on, _ := clockFrame(base, config)
-	off, _ := clockFrame(base.Add(500*time.Millisecond), config)
-	if len(on) != len(off) {
-		t.Fatalf("blink element counts = %d/%d", len(on), len(off))
+	base := time.Date(2026, time.August, 4, 10, 26, 9, 0, time.Local)
+	bright, _ := clockFrame(base, config)
+	dimming, _ := clockFrame(base.Add(250*time.Millisecond), config)
+	dim, _ := clockFrame(base.Add(500*time.Millisecond), config)
+	brightening, _ := clockFrame(base.Add(750*time.Millisecond), config)
+	if len(bright) != len(dim) {
+		t.Fatalf("fade element counts = %d/%d", len(bright), len(dim))
 	}
-	for index := range on {
-		if on[index].X != off[index].X || on[index].Y != off[index].Y || on[index].Text != off[index].Text {
-			t.Fatalf("blink moved element %d: %#v -> %#v", index, on[index], off[index])
+	for index := range bright {
+		if bright[index].X != dim[index].X || bright[index].Y != dim[index].Y || bright[index].Text != dim[index].Text {
+			t.Fatalf("fade moved element %d: %#v -> %#v", index, bright[index], dim[index])
 		}
-		if on[index].Text == ":" && (on[index].Color != visibleColor || off[index].Color != hiddenColor) {
-			t.Fatalf("colon colors = %s/%s", on[index].Color, off[index].Color)
+		if bright[index].Text == ":" {
+			if bright[index].Color != "#FFFFFFFF" || dimming[index].Color != "#FFFFFFA4" || dim[index].Color != "#FFFFFF48" || brightening[index].Color != "#FFFFFFA4" {
+				t.Fatalf("colon fade = %s, %s, %s, %s", bright[index].Color, dimming[index].Color, dim[index].Color, brightening[index].Color)
+			}
 		}
 	}
 }
@@ -88,6 +109,8 @@ func TestNextDelayUsesOnlyNecessaryRefreshRate(t *testing.T) {
 
 	now := time.Date(2026, time.August, 4, 10, 26, 9, int(250*time.Millisecond), time.Local)
 	config := DefaultConfig()
+	config.BlinkColon = false
+	config.ShowSeconds = true
 	if got := nextDelay(now, config); got != 750*time.Millisecond {
 		t.Fatalf("seconds delay = %s", got)
 	}
@@ -96,7 +119,7 @@ func TestNextDelayUsesOnlyNecessaryRefreshRate(t *testing.T) {
 		t.Fatalf("minute delay = %s", got)
 	}
 	config.BlinkColon = true
-	if got := nextDelay(now, config); got != 250*time.Millisecond {
+	if got := nextDelay(now, config); got != 30*time.Millisecond {
 		t.Fatalf("blink delay = %s", got)
 	}
 }

@@ -53,27 +53,27 @@ Press Ctrl+C to stop. Use `--keep-display` to retain the final frame. Run `busyc
 
 ## Clock
 
-The default face matches [Max Swinkels' community clock](https://maxswinkels.github.io/busybar-apps/apps/clock/): a white `extra_large` 24-hour clock with seconds, centered on the 72×16 display.
+The face is based on [Max Swinkels' community clock](https://maxswinkels.github.io/busybar-apps/apps/clock/). By default it shows 12-hour local time with AM/PM and no seconds, while the colon smoothly fades through one cycle each second without disappearing.
 
 ```sh
 busyctl clock
 ```
 
-Use native 12-hour time with an AM/PM indicator:
+Enable seconds or switch back to the original 24-hour layout:
 
 ```sh
-busyctl clock --12-hour
+busyctl clock --seconds
+busyctl clock --12-hour=false --seconds
 ```
 
-Seconds and blinking colons are independently configurable:
+Seconds and fading colons are independently configurable:
 
 ```sh
-busyctl clock --seconds=false
-busyctl clock --blink-colon
-busyctl clock --12-hour --seconds=false --blink-colon
+busyctl clock --blink-colon=false
+busyctl clock --seconds --blink-colon
 ```
 
-The clock aligns updates to the next minute, second, or half-second boundary and only redraws when the visible state changes.
+The clock aligns digit updates to time boundaries and renders the colon fade at a bounded 25 FPS without queuing frames.
 
 ### Display design
 
