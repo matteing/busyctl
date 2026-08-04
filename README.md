@@ -1,17 +1,64 @@
-# Apple Music for BUSY Bar
+# busyctl
 
-A single-purpose Go process that renders Apple Music now-playing data on a BUSY Bar. It uses the stock HTTP API; no custom firmware is required.
+`busyctl` is a single, self-contained Go CLI for custom BUSY Bar apps. It uses the stock HTTP API; no custom firmware is required.
 
-## Design
+The first bundled app mirrors Apple Music now-playing data:
 
-- The entire composition has a true one-pixel outer margin. The static album cover is 14×14 at the left, followed by a one-pixel gap.
-- Titles view shows the song and artist using bundled fonts. Only one row scrolls at a time: song for six seconds, pause for three, artist for six, pause for three.
-- Visualizer view is a seamless 15 FPS spectrum with independent random-looking peaks, a vivid perceptual gradient built from three scored album colors, and a bright album-colored cap on every bar. Each tick updates one fixed image element; the cover is not resent.
-- The view is selected once at startup with `--view titles|visualizer`; titles is the default. The process does not subscribe to runtime knob input.
-- When playback pauses, timers stop and the current view is redrawn in grayscale. Playback resumes in that same view. On a cold start while paused, the API's latest album seeds that frozen grayscale screen.
-- HTTP mutations use independent connections because firmware 25 is more reliable without keep-alive.
+```sh
+busyctl apple-music
+```
 
-## Build
+## Install
+
+Download the archive for your machine from [GitHub Releases](https://github.com/matteing/busyctl/releases/latest):
+
+| Operating system | Intel / AMD | ARM |
+| --- | --- | --- |
+| macOS | `darwin_amd64` | `darwin_arm64` |
+| Linux | `linux_amd64` | `linux_arm64` |
+| Windows | `windows_amd64.zip` | `windows_arm64.zip` |
+
+Each release contains the binary, README, license, and a SHA-256 checksum manifest. Release binaries are currently unsigned. On macOS, downloading with `curl` and extracting in Terminal avoids most browser quarantine friction; otherwise macOS may ask you to approve the binary in Privacy & Security.
+
+With Go 1.26.5 or newer, you can instead install directly:
+
+```sh
+go install github.com/matteing/busyctl/cmd/busyctl@latest
+```
+
+## Apple Music
+
+USB uses `10.0.4.20` by default:
+
+```sh
+busyctl apple-music
+```
+
+Start directly in visualizer view:
+
+```sh
+busyctl apple-music --view visualizer
+```
+
+For Wi-Fi:
+
+```sh
+busyctl --host 192.168.1.50 --token 1234 apple-music
+```
+
+The process polls `https://matteing.com/api/now-playing` every ten seconds. Use `--source` to override that endpoint. `BUSYBAR_HOST` and `BUSYBAR_TOKEN` provide equivalent environment configuration.
+
+Press Ctrl+C to stop. Use `--keep-display` to retain the final frame. Run `busyctl --help` or `busyctl apple-music --help` for every option.
+
+### Display design
+
+- The composition has a true one-pixel outer margin. The 14×14 album cover uses a lightly rounded, antialiased squircle mask and stays static at the left.
+- Titles use the bundled BUSY Bar font. Only one row scrolls at a time: song for six seconds, pause for three, artist for six, pause for three.
+- The visualizer is a seamless 15 FPS spectrum built from narrow musical transients, a changing connected energy bed, and a vivid perceptual gradient extracted from the album artwork.
+- The waveform fades smoothly into the display at its edges. Each tick updates one fixed image element; the cover is not resent.
+- When playback pauses, timers stop and the current view freezes in grayscale. Playback resumes in that same view.
+
+## Build from source
 
 Go is pinned with `mise`:
 
@@ -21,28 +68,8 @@ mise run check
 mise run build
 ```
 
-The resulting `bin/applemusic` is self-contained.
+The resulting `bin/busyctl` is self-contained.
 
-## Run
+## Releases
 
-USB uses `10.0.4.20` by default:
-
-```sh
-./bin/applemusic
-```
-
-Start directly in visualizer view:
-
-```sh
-./bin/applemusic --view visualizer
-```
-
-For Wi-Fi:
-
-```sh
-./bin/applemusic --host 192.168.1.50 --token 1234
-```
-
-The process polls `https://matteing.com/api/now-playing` every ten seconds. Use `--source` to override that endpoint. `BUSYBAR_HOST` and `BUSYBAR_TOKEN` provide equivalent environment configuration.
-
-Press Ctrl+C to stop. Use `--keep-display` to retain the final frame.
+Pushing a semantic version tag such as `v0.2.0` runs the release workflow. It tests the exact tag and publishes CGO-free archives for macOS, Linux, and Windows on both amd64 and arm64.

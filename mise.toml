@@ -2,8 +2,8 @@
 go = "1.26.5"
 
 [tasks.build]
-description = "Build the Apple Music display"
-run = "go build -o bin/applemusic ./cmd/applemusic"
+description = "Build busyctl"
+run = ["mkdir -p bin", "go build -trimpath -o bin/busyctl ./cmd/busyctl"]
 
 [tasks.test]
 description = "Run the test suite"

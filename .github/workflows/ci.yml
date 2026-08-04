@@ -31,7 +31,36 @@ jobs:
         run: go vet ./...
 
       - name: Build
-        run: go build -trimpath -o bin/applemusic ./cmd/applemusic
+        run: |
+          mkdir -p bin
+          go build -trimpath -o bin/busyctl ./cmd/busyctl
 
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
+
+  cross-compile:
+    name: Cross-compile release targets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Build macOS, Linux, and Windows binaries
+        shell: bash
+        run: |
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            GOOS="${target%/*}"
+            GOARCH="${target#*/}"
+            suffix=""
+            if [[ "${GOOS}" == "windows" ]]; then suffix=".exe"; fi
+            CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
+              go build -trimpath -o "/tmp/busyctl-${GOOS}-${GOARCH}${suffix}" ./cmd/busyctl
+          done

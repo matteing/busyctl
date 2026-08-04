@@ -3,50 +3,79 @@ package applemusic
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	barapi "github.com/matteing/busybar-apple-music/internal/busybar"
-	"github.com/matteing/busybar-apple-music/internal/media"
+	barapi "github.com/matteing/busyctl/internal/busybar"
+	"github.com/matteing/busyctl/internal/media"
 )
 
 const (
-	ApplicationID      = "busybar_apple_music"
-	defaultSource      = "https://matteing.com/api/now-playing"
-	displayWidth       = 72
-	displayHeight      = 16
-	outerPadding       = 1
-	artworkSize        = displayHeight - 2*outerPadding
-	artworkX           = outerPadding
-	artworkY           = outerPadding
-	contentX           = artworkX + artworkSize + 1
-	contentY           = outerPadding
-	contentWidth       = displayWidth - contentX - outerPadding
-	contentHeight      = displayHeight - 2*outerPadding
-	textWidth          = contentWidth
-	titleY             = contentY
-	artistY            = contentY + 7
-	viewTitles         = "titles"
-	viewVisualizer     = "visualizer"
-	defaultScrollRate  = 1500
-	scrollTime         = 6 * time.Second
-	scrollRest         = 3 * time.Second
-	pollInterval       = 10 * time.Second
-	clearSettle        = 750 * time.Millisecond
-	assetRetryDelay    = 300 * time.Millisecond
-	assetDeleteRetries = 4
+	ApplicationID     = "busybar_apple_music"
+	defaultSource     = "https://matteing.com/api/now-playing"
+	displayWidth      = 72
+	displayHeight     = 16
+	outerPadding      = 1
+	artworkSize       = displayHeight - 2*outerPadding
+	artworkX          = outerPadding
+	artworkY          = outerPadding
+	contentX          = artworkX + artworkSize + 1
+	contentY          = outerPadding
+	contentWidth      = displayWidth - contentX - outerPadding
+	contentHeight     = displayHeight - 2*outerPadding
+	textWidth         = contentWidth
+	titleY            = contentY
+	artistY           = contentY + 7
+	ViewTitles        = "titles"
+	ViewVisualizer    = "visualizer"
+	defaultScrollRate = 1500
+	scrollTime        = 6 * time.Second
+	scrollRest        = 3 * time.Second
+	pollInterval      = 10 * time.Second
 	// A higher-priority native BUSY Bar view can legitimately reject draws for
 	// minutes. Retry at the metadata cadence instead of hammering the firmware.
 	redrawRetryDelay = 10 * time.Second
 	noRepeatDelay    = 60 * time.Second
-	colorCover       = "cover.png"
-	grayCover        = "cover-gray.png"
+	assetBankCount   = 2
 )
+
+// Config contains the complete runtime configuration supplied by busyctl.
+// Keeping command-line concerns outside this package makes the Apple Music app
+// reusable by the unified CLI and future front ends.
+type Config struct {
+	Host        string
+	Token       string
+	Source      string
+	Priority    int
+	KeepDisplay bool
+	View        string
+}
+
+// DefaultConfig returns the documented USB, source, and display defaults. The
+// BUSY Bar address and token can be supplied through the environment without
+// ever exposing the token in command help.
+func DefaultConfig() Config {
+	return Config{
+		Host:     envOr("BUSYBAR_HOST", "10.0.4.20"),
+		Token:    envOr("BUSYBAR_TOKEN", ""),
+		Source:   defaultSource,
+		Priority: 100,
+		View:     ViewTitles,
+	}
+}
+
+// Validate checks values shared by CLI and programmatic callers.
+func (config Config) Validate() error {
+	switch config.View {
+	case ViewTitles, ViewVisualizer:
+		return nil
+	default:
+		return fmt.Errorf("invalid view %q: must be %q or %q", config.View, ViewTitles, ViewVisualizer)
+	}
+}
 
 type options struct {
 	host        string
@@ -88,7 +117,6 @@ type sourceClient struct {
 
 type bar interface {
 	UploadAsset(context.Context, string, string, []byte) error
-	DeleteAssets(context.Context, string) error
 	Draw(context.Context, barapi.Drawing) error
 	Clear(context.Context, string) error
 }
@@ -121,9 +149,9 @@ type application struct {
 	phase        textPhase
 	visualFrame  int
 	visualFrames [][]byte
+	assetBank    int
 	assetsReady  bool
 	renderDirty  bool
-	clearFirst   bool
 }
 
 type pollResult struct {
@@ -131,13 +159,19 @@ type pollResult struct {
 	err   error
 }
 
-func Run(ctx context.Context, args []string) error {
-	opts, err := parseOptions(args)
-	if err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
+func Run(ctx context.Context, config Config) error {
+	if err := config.Validate(); err != nil {
 		return err
+	}
+	opts := options{
+		host:        config.Host,
+		token:       config.Token,
+		source:      config.Source,
+		priority:    config.Priority,
+		keepDisplay: config.KeepDisplay,
+	}
+	if config.View == ViewVisualizer {
+		opts.view = sceneVisualizer
 	}
 	device := barapi.New(opts.host, opts.token)
 	version, err := device.Connect(ctx)
@@ -163,38 +197,6 @@ func Run(ctx context.Context, args []string) error {
 		}()
 	}
 	return app.run(ctx)
-}
-
-func parseOptions(args []string) (options, error) {
-	var result options
-	view := viewTitles
-	flags := flag.NewFlagSet("applemusic", flag.ContinueOnError)
-	flags.SetOutput(os.Stdout)
-	flags.StringVar(&result.host, "host", envOr("BUSYBAR_HOST", "10.0.4.20"), "BUSY Bar hostname or IP")
-	flags.StringVar(&result.token, "token", envOr("BUSYBAR_TOKEN", ""), "Wi-Fi API token")
-	flags.StringVar(&result.source, "source", defaultSource, "now-playing JSON endpoint")
-	flags.IntVar(&result.priority, "priority", 100, "display priority")
-	flags.BoolVar(&result.keepDisplay, "keep-display", false, "leave the final frame on exit")
-	flags.StringVar(&view, "view", viewTitles, "view to display: titles or visualizer")
-	flags.Usage = func() {
-		fmt.Fprintln(flags.Output(), "Usage: applemusic [flags]")
-		flags.PrintDefaults()
-	}
-	if err := flags.Parse(args); err != nil {
-		return result, err
-	}
-	if flags.NArg() != 0 {
-		return result, fmt.Errorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
-	}
-	switch view {
-	case viewTitles:
-		result.view = sceneText
-	case viewVisualizer:
-		result.view = sceneVisualizer
-	default:
-		return result, fmt.Errorf("invalid --view %q: must be %q or %q", view, viewTitles, viewVisualizer)
-	}
-	return result, nil
 }
 
 func (a *application) run(ctx context.Context) error {
@@ -290,7 +292,7 @@ func (a *application) applySnapshot(ctx context.Context, value snapshot) error {
 		a.phase = phaseTitle
 		a.visualFrame = 0
 		a.assetsReady = false
-		a.markDirty(false)
+		a.markDirty()
 		if value.IsPlaying {
 			fmt.Printf("Now playing: %s — %s\n", candidate.Name, candidate.Artist)
 		} else {
@@ -304,29 +306,25 @@ func (a *application) applySnapshot(ctx context.Context, value snapshot) error {
 	stateChanged := a.playing != value.IsPlaying
 	a.playing = value.IsPlaying
 	if trackChanged || stateChanged {
-		if stateChanged && !trackChanged {
-			a.markDirty(true)
-		}
+		a.markDirty()
 		return a.reconcile(ctx)
 	}
 	return nil
 }
 
-func (a *application) markDirty(clearFirst bool) {
+func (a *application) markDirty() {
 	a.renderDirty = true
-	a.clearFirst = a.clearFirst || clearFirst
 }
 
 // reconcile is the only path that commits a complete scene. Partial animation
-// updates are suppressed while it is dirty, so a failed clear/draw can never
-// be followed by frames from another scene.
+// updates are suppressed while it is dirty, so a failed draw can never be
+// followed by frames from another asset bank.
 func (a *application) reconcile(ctx context.Context) error {
 	if !a.renderDirty {
 		return nil
 	}
 	if a.track == nil {
 		a.renderDirty = false
-		a.clearFirst = false
 		return nil
 	}
 	if !a.assetsReady {
@@ -334,22 +332,11 @@ func (a *application) reconcile(ctx context.Context) error {
 			return err
 		}
 		a.assetsReady = true
-		// prepareTrack clears the application before replacing its assets.
-		a.clearFirst = false
-	}
-	if a.clearFirst {
-		if err := a.clear(ctx); err != nil {
-			return err
-		}
 	}
 	if err := a.drawFullScene(ctx, !a.playing); err != nil {
-		// The device may have applied only part of a failed request. Clear on
-		// the next retry before drawing another complete composition.
-		a.clearFirst = true
 		return err
 	}
 	a.renderDirty = false
-	a.clearFirst = false
 	return nil
 }
 
@@ -364,7 +351,7 @@ func (a *application) animationStep(ctx context.Context) error {
 	if a.scene == sceneVisualizer {
 		if len(a.visualFrames) == 0 {
 			a.assetsReady = false
-			a.markDirty(true)
+			a.markDirty()
 			return fmt.Errorf("visualizer has no prepared frames")
 		}
 		a.visualFrame = (a.visualFrame + 1) % len(a.visualFrames)
@@ -374,18 +361,12 @@ func (a *application) animationStep(ctx context.Context) error {
 		err = a.drawText(ctx, false, false)
 	}
 	if err != nil {
-		a.markDirty(true)
+		a.markDirty()
 	}
 	return err
 }
 
 func (a *application) prepareTrack(ctx context.Context, track *Track) error {
-	if err := a.clear(ctx); err != nil {
-		return err
-	}
-	if err := a.deleteAssets(ctx); err != nil {
-		return err
-	}
 	artwork, err := media.PrepareArtwork(track.cover(), artworkSize)
 	if err != nil {
 		return err
@@ -397,12 +378,13 @@ func (a *application) prepareTrack(ctx context.Context, track *Track) error {
 			return err
 		}
 	}
+	nextBank := (a.assetBank + 1) % assetBankCount
 	assets := []struct {
 		name string
 		data []byte
 	}{
-		{name: colorCover, data: artwork.ColorPNG},
-		{name: grayCover, data: artwork.GrayscalePNG},
+		{name: colorCoverPath(nextBank), data: artwork.ColorPNG},
+		{name: grayCoverPath(nextBank), data: artwork.GrayscalePNG},
 	}
 	for _, asset := range assets {
 		if err := a.bar.UploadAsset(ctx, ApplicationID, asset.name, asset.data); err != nil {
@@ -410,11 +392,12 @@ func (a *application) prepareTrack(ctx context.Context, track *Track) error {
 		}
 	}
 	for index, frame := range frames {
-		name := fmt.Sprintf("visualizer-%02d.png", index)
+		name := visualizerPath(nextBank, index)
 		if err := a.bar.UploadAsset(ctx, ApplicationID, name, frame); err != nil {
 			return fmt.Errorf("upload visualizer frame %d: %w", index+1, err)
 		}
 	}
+	a.assetBank = nextBank
 	a.visualFrames = frames
 	return nil
 }
@@ -443,7 +426,7 @@ func (a *application) drawText(ctx context.Context, paused, includeCover bool) e
 	}
 	elements := make([]barapi.Element, 0, 3)
 	if includeCover {
-		elements = append(elements, imageElement("cover", coverPath(paused), artworkX, artworkY))
+		elements = append(elements, imageElement("cover", coverPath(a.assetBank, paused), artworkX, artworkY))
 	}
 	elements = append(elements,
 		textElement("title", a.track.Name, titleColor, titleY, titleRate),
@@ -453,20 +436,20 @@ func (a *application) drawText(ctx context.Context, paused, includeCover bool) e
 }
 
 func (a *application) drawVisualizer(ctx context.Context, paused, includeCover bool) error {
-	path := fmt.Sprintf("visualizer-%02d.png", a.visualFrame)
+	path := visualizerPath(a.assetBank, a.visualFrame)
 	if paused {
 		gray, err := media.GrayscalePNG(a.visualFrames[a.visualFrame])
 		if err != nil {
 			return err
 		}
-		path = "visualizer-paused.png"
+		path = pausedVisualizerPath(a.assetBank)
 		if err := a.bar.UploadAsset(ctx, ApplicationID, path, gray); err != nil {
 			return fmt.Errorf("upload paused visualizer: %w", err)
 		}
 	}
 	elements := make([]barapi.Element, 0, 2)
 	if includeCover {
-		elements = append(elements, imageElement("cover", coverPath(paused), artworkX, artworkY))
+		elements = append(elements, imageElement("cover", coverPath(a.assetBank, paused), artworkX, artworkY))
 	}
 	elements = append(elements, imageElement("visualizer", path, contentX, contentY))
 	return a.draw(ctx, elements)
@@ -474,7 +457,7 @@ func (a *application) drawVisualizer(ctx context.Context, paused, includeCover b
 
 func (a *application) drawVisualizerFrame(ctx context.Context) error {
 	return a.draw(ctx, []barapi.Element{
-		imageElement("visualizer", fmt.Sprintf("visualizer-%02d.png", a.visualFrame), contentX, contentY),
+		imageElement("visualizer", visualizerPath(a.assetBank, a.visualFrame), contentX, contentY),
 	})
 }
 
@@ -484,34 +467,6 @@ func (a *application) draw(ctx context.Context, elements []barapi.Element) error
 		Priority:        a.options.priority,
 		Elements:        elements,
 	})
-}
-
-func (a *application) clear(ctx context.Context) error {
-	if err := a.bar.Clear(ctx, ApplicationID); err != nil {
-		return fmt.Errorf("clear Apple Music scene: %w", err)
-	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(clearSettle):
-		return nil
-	}
-}
-
-func (a *application) deleteAssets(ctx context.Context) error {
-	var last error
-	for attempt := 1; attempt <= assetDeleteRetries; attempt++ {
-		last = a.bar.DeleteAssets(ctx, ApplicationID)
-		if last == nil {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(assetRetryDelay):
-		}
-	}
-	return fmt.Errorf("delete Apple Music assets after %d attempts: %w", assetDeleteRetries, last)
 }
 
 func (s sourceClient) fetch(ctx context.Context) (snapshot, error) {
@@ -580,11 +535,27 @@ func textElement(id, text, color string, y, rate int) barapi.Element {
 	}
 }
 
-func coverPath(paused bool) string {
+func coverPath(bank int, paused bool) string {
 	if paused {
-		return grayCover
+		return grayCoverPath(bank)
 	}
-	return colorCover
+	return colorCoverPath(bank)
+}
+
+func colorCoverPath(bank int) string {
+	return fmt.Sprintf("cover-%d.png", bank)
+}
+
+func grayCoverPath(bank int) string {
+	return fmt.Sprintf("cover-gray-%d.png", bank)
+}
+
+func visualizerPath(bank, frame int) string {
+	return fmt.Sprintf("visualizer-%d-%02d.png", bank, frame)
+}
+
+func pausedVisualizerPath(bank int) string {
+	return fmt.Sprintf("visualizer-paused-%d.png", bank)
 }
 
 func envOr(name, fallback string) string {
@@ -596,7 +567,7 @@ func envOr(name, fallback string) string {
 
 func (s scene) String() string {
 	if s == sceneVisualizer {
-		return viewVisualizer
+		return ViewVisualizer
 	}
-	return viewTitles
+	return ViewTitles
 }

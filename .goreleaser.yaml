@@ -1,0 +1,51 @@
+version: 2
+
+project_name: busyctl
+
+builds:
+  - id: busyctl
+    main: ./cmd/busyctl
+    binary: busyctl
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/matteing/busyctl/internal/cli.version={{ .Version }}
+
+archives:
+  - ids:
+      - busyctl
+    name_template: "busyctl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    wrap_in_directory: true
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "busyctl_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+release:
+  name_template: "busyctl {{ .Tag }}"
+  prerelease: auto
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
