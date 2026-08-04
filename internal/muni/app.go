@@ -31,17 +31,21 @@ const (
 	defaultAPIKey   = "0be8ebd0284ce712a63f29dcaf7798c4"
 	pollInterval    = 15 * time.Second
 	animationPeriod = 100 * time.Millisecond
-	// The small font has a one-pixel trailing side bearing. Anchoring at 73
-	// places the final illuminated pixel on column 71 of the 72-pixel display.
-	etaRightAnchor = 73
-	LocationAuto   = "auto"
-	LocationOpenAI = "openai"
+	// Hardware treats width as a fixed text box and left-aligns within it.
+	// A natural-width box anchored at 71 makes every ETA end on column 69,
+	// matching the correctly positioned Now state with a two-pixel margin.
+	etaRightAnchor     = 71
+	LocationAuto       = "auto"
+	LocationOpenAI     = "openai"
+	LocationToOpenAI   = "to-openai"
+	LocationFromOpenAI = "from-openai"
 )
 
 type place struct {
 	line       string
 	label      string
 	station    string
+	toward     string
 	latitude   float64
 	longitude  float64
 	stopCodes  []string
@@ -49,11 +53,29 @@ type place struct {
 	textColor  string
 }
 
-var places = map[string]place{
-	LocationOpenAI: {
-		line: "T", label: "OpenAI", station: "UCSF / Chase Center (16th St)", latitude: 37.7694, longitude: -122.3875,
-		stopCodes:  []string{"17357", "17360"},
+var commuteToOpenAI = []place{
+	{
+		line: "N", label: "Folsom", station: "The Embarcadero & Folsom St", toward: "caltrain",
+		latitude: 37.79048, longitude: -122.38969, stopCodes: []string{"14509", "14510"},
+		badgeColor: color.NRGBA{R: 0x00, G: 0x5b, B: 0x95, A: 0xff}, textColor: "#8FE3C7FF",
+	},
+	{
+		line: "T", label: "4th & King", station: "4th St & King St", toward: "sunnydale",
+		latitude: 37.77613, longitude: -122.39383, stopCodes: []string{"17166", "17397"},
 		badgeColor: color.NRGBA{R: 0xbf, G: 0x2b, B: 0x45, A: 0xff}, textColor: "#8FE3C7FF",
+	},
+}
+
+var commuteFromOpenAI = []place{
+	{
+		line: "T", label: "UCSF", station: "UCSF / Chase Center (16th St)", toward: "chinatown",
+		latitude: 37.76850, longitude: -122.38918, stopCodes: []string{"17357", "17360"},
+		badgeColor: color.NRGBA{R: 0xbf, G: 0x2b, B: 0x45, A: 0xff}, textColor: "#8FE3C7FF",
+	},
+	{
+		line: "N", label: "4th & King", station: "King St & 4th St", toward: "ocean beach",
+		latitude: 37.77627, longitude: -122.39408, stopCodes: []string{"15240"},
+		badgeColor: color.NRGBA{R: 0x00, G: 0x5b, B: 0x95, A: 0xff}, textColor: "#8FE3C7FF",
 	},
 }
 
@@ -83,7 +105,7 @@ func DefaultConfig() Config {
 		Host: envOr("BUSYBAR_HOST", "10.0.4.20"), Token: envOr("BUSYBAR_TOKEN", ""),
 		Source: defaultSource, Locator: envOr("MUNI_LOCATION_URL", defaultLocator),
 		APIKey: envOr("SFMTA_API_KEY", defaultAPIKey), Priority: 100,
-		Location:             envOr("MUNI_LOCATION", LocationOpenAI),
+		Location:             envOr("MUNI_LOCATION", LocationToOpenAI),
 		AllowNetworkLocation: envBool("MUNI_ALLOW_NETWORK_LOCATION"),
 	}
 }
@@ -102,6 +124,9 @@ func (config Config) Validate() error {
 		if _, err := url.ParseRequestURI(config.Locator); err != nil {
 			return fmt.Errorf("invalid location service URL: %w", err)
 		}
+		return nil
+	}
+	if _, _, ok := parseCoordinates(config.Location); ok {
 		return nil
 	}
 	if _, err := selectedPlaces(config.Location); err != nil {
@@ -228,6 +253,7 @@ func (a *application) run(ctx context.Context) error {
 }
 
 func (a *application) refresh(ctx context.Context) {
+	wasPulsing := a.shouldPulse()
 	type update struct {
 		line string
 		data []arrival
@@ -244,6 +270,9 @@ func (a *application) refresh(ctx context.Context) {
 		count++
 		go func(current place) {
 			data, err := a.source.fetchLine(ctx, current.line, current.stopCodes)
+			if err == nil {
+				data = arrivalsToward(data, current.toward)
+			}
 			updates <- update{line: current.line, data: data, err: err}
 		}(current)
 	}
@@ -256,8 +285,16 @@ func (a *application) refresh(ctx context.Context) {
 		a.latest[result.line] = result.data
 		fmt.Printf("%s: %s\n", result.line, arrivalLog(result.data))
 	}
-	a.pulseFrom = time.Now()
-	a.render(ctx, 100)
+	now := time.Now()
+	isPulsing := a.shouldPulse()
+	if isPulsing && !wasPulsing {
+		a.pulseFrom = now
+	}
+	opacity := 100
+	if isPulsing {
+		opacity = pulseOpacity(now.Sub(a.pulseFrom))
+	}
+	a.render(ctx, opacity)
 }
 
 func (a *application) render(ctx context.Context, opacity int) {
@@ -272,22 +309,23 @@ func (a *application) render(ctx context.Context, opacity int) {
 		if len(values) != 0 {
 			destination = shortDestination(values[0].Destination)
 		}
-		rowOpacity := 100
+		etaOpacity := 100
 		if lineShouldPulse(values) {
-			rowOpacity = opacity
+			etaOpacity = opacity
 		}
-		alpha := fmt.Sprintf("%02X", rowOpacity*255/100)
-		textColor := current.textColor[:7] + alpha
-		etaColor := "#FFF4D6" + alpha
+		etaAlpha := fmt.Sprintf("%02X", etaOpacity*255/100)
+		etaColor := "#FFF4D6" + etaAlpha
+		etaText := arrivalText(values)
 		rowCenter := 8
 		if len(a.selected) > 1 {
 			rowCenter = index*8 + 4
 		}
 		suffix := fmt.Sprintf("-%d", index)
+		badgeOpacity := 100
 		elements = append(elements,
-			barapi.Element{ID: "route" + suffix, Type: "image", X: 1, Y: rowCenter, Path: badgePath(current.line), Align: "mid_left", Display: "front", Opacity: &rowOpacity},
-			barapi.Element{ID: "destination" + suffix, Type: "text", X: 10, Y: rowCenter, Text: destination, Font: "small", Align: "mid_left", Color: textColor, Display: "front", Width: 43},
-			barapi.Element{ID: "eta" + suffix, Type: "text", X: etaRightAnchor, Y: rowCenter, Text: arrivalText(values), Font: "small", Align: "mid_right", Color: etaColor, Display: "front", Width: 18},
+			barapi.Element{ID: "route" + suffix, Type: "image", X: 1, Y: rowCenter, Path: badgePath(current.line), Align: "mid_left", Display: "front", Opacity: &badgeOpacity},
+			barapi.Element{ID: "destination" + suffix, Type: "text", X: 10, Y: rowCenter, Text: destination, Font: "small", Align: "mid_left", Color: current.textColor, Display: "front", Width: 43},
+			barapi.Element{ID: "eta" + suffix, Type: "text", X: etaRightAnchor, Y: rowCenter, Text: etaText, Font: "small", Align: "mid_right", Color: etaColor, Display: "front"},
 		)
 	}
 	if err := a.bar.Draw(ctx, barapi.Drawing{ApplicationName: ApplicationID, Priority: a.priority, Elements: elements}); err != nil {
@@ -305,7 +343,7 @@ func (a *application) shouldPulse() bool {
 }
 
 func lineShouldPulse(values []arrival) bool {
-	return len(values) != 0 && (values[0].Minutes == 3 || values[0].Minutes == 4)
+	return len(values) != 0 && values[0].Minutes <= 0
 }
 
 func pulseOpacity(elapsed time.Duration) int {
@@ -343,6 +381,20 @@ func (s sourceClient) fetchLine(ctx context.Context, line string, stops []string
 	}
 	sort.Slice(values, func(i, j int) bool { return values[i].Timestamp < values[j].Timestamp })
 	return deduplicate(values), nil
+}
+
+func arrivalsToward(values []arrival, destination string) []arrival {
+	destination = strings.ToLower(strings.TrimSpace(destination))
+	if destination == "" {
+		return values
+	}
+	filtered := make([]arrival, 0, len(values))
+	for _, value := range values {
+		if strings.Contains(strings.ToLower(value.Destination), destination) {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered
 }
 
 func (s sourceClient) fetchStop(ctx context.Context, line, stop string) ([]arrival, error) {
@@ -509,14 +561,16 @@ func (s sourceClient) nearestMetro(ctx context.Context, latitude, longitude floa
 func selectedPlaces(location string) ([]place, error) {
 	location = strings.ToLower(strings.TrimSpace(location))
 	switch location {
-	case "", LocationOpenAI, "office":
-		return []place{places[LocationOpenAI]}, nil
+	case "", LocationToOpenAI, "howard", "inbound":
+		return append([]place(nil), commuteToOpenAI...), nil
+	case LocationOpenAI, LocationFromOpenAI, "office", "outbound":
+		return append([]place(nil), commuteFromOpenAI...), nil
 	}
 	_, _, ok := parseCoordinates(location)
 	if !ok {
-		return nil, fmt.Errorf("unknown location %q: use openai or LAT,LON", location)
+		return nil, fmt.Errorf("unknown location %q: use to-openai, from-openai, or LAT,LON", location)
 	}
-	return []place{places[LocationOpenAI]}, nil
+	return nil, errors.New("coordinates must be resolved before selecting a commute")
 }
 
 func parseCoordinates(value string) (float64, float64, bool) {
@@ -559,7 +613,7 @@ func arrivalText(values []arrival) string {
 		return "Zzz"
 	}
 	if values[0].Minutes <= 0 {
-		return "NOW"
+		return "Now"
 	}
 	if values[0].Minutes > 99 {
 		return "99+"
@@ -570,7 +624,7 @@ func arrivalText(values []arrival) string {
 func shortStation(value string) string {
 	lower := strings.ToLower(value)
 	for match, short := range map[string]string{
-		"folsom": "Folsom", "ucsf": "UCSF",
+		"folsom": "Folsom", "ucsf": "UCSF", "4th st & king": "4th/King", "king st & 4th": "4th/King",
 	} {
 		if strings.Contains(lower, match) {
 			return short
@@ -582,15 +636,15 @@ func shortStation(value string) string {
 func shortDestination(value string) string {
 	lower := strings.ToLower(value)
 	for match, short := range map[string]string{
-		"ocean beach": "Ocean", "caltrain": "Caltrn", "chinatown": "China", "sunnydale": "Sunny",
+		"ocean beach": "Ocean Beach", "caltrain": "Caltrain", "chinatown": "Chinatown", "sunnydale": "Sunnydale",
 	} {
 		if strings.Contains(lower, match) {
 			return short
 		}
 	}
 	runes := []rune(strings.TrimSpace(value))
-	if len(runes) > 6 {
-		runes = runes[:6]
+	if len(runes) > 10 {
+		runes = runes[:10]
 	}
 	return string(runes)
 }

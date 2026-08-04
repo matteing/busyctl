@@ -28,8 +28,8 @@ func (fake *fakeBar) Draw(_ context.Context, drawing barapi.Drawing) error {
 func TestDefaultConfigDoesNotTransmitLocation(t *testing.T) {
 	t.Setenv("MUNI_LOCATION", "")
 	config := DefaultConfig()
-	if config.Location != LocationOpenAI {
-		t.Fatalf("default location = %q, want openai", config.Location)
+	if config.Location != LocationToOpenAI {
+		t.Fatalf("default location = %q, want to-openai", config.Location)
 	}
 	if err := config.Validate(); err != nil {
 		t.Fatal(err)
@@ -102,6 +102,38 @@ func TestFetchLineCombinesDirectionsAndFiltersOtherRoutes(t *testing.T) {
 	}
 }
 
+func TestCommuteProfilesUseDirectionalStops(t *testing.T) {
+	toOpenAI, err := selectedPlaces(LocationToOpenAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(toOpenAI) != 2 || toOpenAI[0].line != "N" || strings.Join(toOpenAI[0].stopCodes, ",") != "14509,14510" || toOpenAI[0].toward != "caltrain" {
+		t.Fatalf("to-openai N leg = %#v", toOpenAI)
+	}
+	if toOpenAI[1].line != "T" || strings.Join(toOpenAI[1].stopCodes, ",") != "17166,17397" || toOpenAI[1].toward != "sunnydale" {
+		t.Fatalf("to-openai T leg = %#v", toOpenAI[1])
+	}
+
+	fromOpenAI, err := selectedPlaces(LocationFromOpenAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fromOpenAI) != 2 || fromOpenAI[0].line != "T" || fromOpenAI[0].toward != "chinatown" || fromOpenAI[1].line != "N" || fromOpenAI[1].toward != "ocean beach" {
+		t.Fatalf("from-openai legs = %#v", fromOpenAI)
+	}
+}
+
+func TestArrivalsTowardFiltersTheOppositePlatform(t *testing.T) {
+	values := []arrival{
+		{Minutes: 1, Destination: "Chinatown"},
+		{Minutes: 4, Destination: "Sunnydale"},
+	}
+	filtered := arrivalsToward(values, "sunnydale")
+	if len(filtered) != 1 || filtered[0].Minutes != 4 || filtered[0].Destination != "Sunnydale" {
+		t.Fatalf("filtered arrivals = %#v", filtered)
+	}
+}
+
 func TestPulseIsSmoothAndBounded(t *testing.T) {
 	if got := pulseOpacity(0); got != 100 {
 		t.Fatalf("pulse at start = %d, want 100", got)
@@ -119,14 +151,34 @@ func TestPulseIsSmoothAndBounded(t *testing.T) {
 	}
 }
 
-func TestTwoRowFrameUsesSharedColumnsAndIndependentPulse(t *testing.T) {
+func TestOnlyNowTriggersPulse(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		values []arrival
+		want   bool
+	}{
+		{name: "missing"},
+		{name: "four minutes", values: []arrival{{Minutes: 4}}},
+		{name: "one minute", values: []arrival{{Minutes: 1}}},
+		{name: "now", values: []arrival{{Minutes: 0}}, want: true},
+		{name: "arriving", values: []arrival{{Minutes: -1}}, want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := lineShouldPulse(test.values); got != test.want {
+				t.Fatalf("lineShouldPulse() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestTwoRowFrameOnlyPulsesNowETA(t *testing.T) {
 	device := &fakeBar{}
 	app := application{
 		bar: device, priority: 42,
-		selected: []place{testNPlace, places[LocationOpenAI]},
+		selected: commuteToOpenAI,
 		latest: map[string][]arrival{
-			"N": {{Minutes: 3, Destination: "Ocean Beach"}},
-			"T": {{Minutes: 8, Destination: "Chinatown"}},
+			"N": {{Minutes: 4, Destination: "Caltrain/Ballpark"}},
+			"T": {{Minutes: 0, Destination: "Sunnydale"}},
 		},
 	}
 	app.render(context.Background(), 55)
@@ -146,12 +198,12 @@ func TestTwoRowFrameUsesSharedColumnsAndIndependentPulse(t *testing.T) {
 		text    string
 		color   string
 	}{
-		{id: "route-0", x: 1, y: 4, align: "mid_left", opacity: 55},
-		{id: "destination-0", x: 10, y: 4, width: 43, align: "mid_left", text: "Ocean", color: "#8FE3C78C"},
-		{id: "eta-0", x: 73, y: 4, width: 18, align: "mid_right", text: "3m", color: "#FFF4D68C"},
+		{id: "route-0", x: 1, y: 4, align: "mid_left", opacity: 100},
+		{id: "destination-0", x: 10, y: 4, width: 43, align: "mid_left", text: "Caltrain", color: "#8FE3C7FF"},
+		{id: "eta-0", x: 71, y: 4, align: "mid_right", text: "4m", color: "#FFF4D6FF"},
 		{id: "route-1", x: 1, y: 12, align: "mid_left", opacity: 100},
-		{id: "destination-1", x: 10, y: 12, width: 43, align: "mid_left", text: "China", color: "#8FE3C7FF"},
-		{id: "eta-1", x: 73, y: 12, width: 18, align: "mid_right", text: "8m", color: "#FFF4D6FF"},
+		{id: "destination-1", x: 10, y: 12, width: 43, align: "mid_left", text: "Sunnydale", color: "#8FE3C7FF"},
+		{id: "eta-1", x: 71, y: 12, align: "mid_right", text: "Now", color: "#FFF4D68C"},
 	}
 	for index, expected := range want {
 		element := drawing.Elements[index]
@@ -169,16 +221,16 @@ func TestMissingPredictionsShowStationAndSleepingETA(t *testing.T) {
 	app := application{
 		bar:      device,
 		priority: 42,
-		selected: []place{testNPlace, places[LocationOpenAI]},
+		selected: commuteToOpenAI,
 		latest:   map[string][]arrival{},
 	}
 	app.render(context.Background(), 100)
 
 	drawing := device.drawings[0]
-	if drawing.Elements[1].Text != "Test" || drawing.Elements[2].Text != "Zzz" {
+	if drawing.Elements[1].Text != "Folsom" || drawing.Elements[2].Text != "Zzz" {
 		t.Fatalf("N fallback = %q %q", drawing.Elements[1].Text, drawing.Elements[2].Text)
 	}
-	if drawing.Elements[4].Text != "UCSF" || drawing.Elements[5].Text != "Zzz" {
+	if drawing.Elements[4].Text != "4th/King" || drawing.Elements[5].Text != "Zzz" {
 		t.Fatalf("T fallback = %q %q", drawing.Elements[4].Text, drawing.Elements[5].Text)
 	}
 }
@@ -190,7 +242,7 @@ func TestEveryETAStateUsesVisiblePixelRightAnchor(t *testing.T) {
 		text   string
 	}{
 		{name: "sleeping", text: "Zzz"},
-		{name: "now", values: []arrival{{Minutes: 0}}, text: "NOW"},
+		{name: "now", values: []arrival{{Minutes: 0}}, text: "Now"},
 		{name: "minutes", values: []arrival{{Minutes: 3}}, text: "3m"},
 		{name: "capped", values: []arrival{{Minutes: 100}}, text: "99+"},
 	}
@@ -203,10 +255,23 @@ func TestEveryETAStateUsesVisiblePixelRightAnchor(t *testing.T) {
 			}
 			app.render(context.Background(), 100)
 			eta := device.drawings[0].Elements[2]
-			if eta.Text != test.text || eta.X != etaRightAnchor || eta.Align != "mid_right" {
+			if eta.Text != test.text || eta.X != etaRightAnchor || eta.Align != "mid_right" || eta.Width != 0 {
 				t.Fatalf("ETA element = %#v", eta)
 			}
 		})
+	}
+}
+
+func TestDestinationLabelsUseAvailableSpace(t *testing.T) {
+	for input, want := range map[string]string{
+		"Caltrain/Ballpark":                 "Caltrain",
+		"Chinatown":                         "Chinatown",
+		"Sunnydale":                         "Sunnydale",
+		"Ocean Beach from King St & 4th St": "Ocean Beach",
+	} {
+		if got := shortDestination(input); got != want {
+			t.Fatalf("shortDestination(%q) = %q, want %q", input, got, want)
+		}
 	}
 }
 

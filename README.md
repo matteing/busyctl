@@ -131,13 +131,18 @@ busyctl muni
   <img src="docs/screenshots/muni.png" alt="Muni arrivals on the BUSY Bar" width="520">
 </p>
 
-By default, `muni` shows T Third arrivals at UCSF/Chase Center. Select the nearest J, K, L, M, N, or T platform with a location supplied at runtime:
+By default, `muni` shows the two legs toward OpenAI: N Judah at Embarcadero & Folsom toward Caltrain, then T Third at 4th & King toward Sunnydale. Switch to the return commute explicitly:
+
+```sh
+busyctl muni to-openai
+busyctl muni from-openai
+```
+
+`busyctl muni openai` is an alias for `from-openai`. `MUNI_LOCATION` provides the same runtime override. Precise runtime coordinates can still select the nearest J, K, L, M, N, or T platform without storing an address in the repository:
 
 ```sh
 busyctl muni --location LAT,LON
 ```
-
-`busyctl muni openai` selects the public preset directly. `MUNI_LOCATION` provides the same runtime override, and `--location-source` can point to a service returning `{"latitude": ..., "longitude": ...}`.
 
 Optional auto mode uses the free `ipwho.is` network-location estimate. Because that sends your public IP address to the provider, it requires explicit opt-in and never runs silently:
 
@@ -145,7 +150,7 @@ Optional auto mode uses the free `ipwho.is` network-location estimate. Because t
 busyctl muni auto --allow-network-location
 ```
 
-The display follows the reference sign style: compact 7×7 route markers share one left column, destinations use soft mint text, and both ETAs lock to the same right edge. A row with a train three or four minutes away fades smoothly between 55% and 100% brightness without affecting the other row. Predictions refresh every 15 seconds from the free UmoIQ endpoint used by SFMTA's public stop pages; no signup is required.
+The display follows the reference sign style: compact 7×7 route markers share one left column, destinations use soft mint text, and natural-width ETA labels lock to the same hardware-tested right edge. Only the `Now` label pulses, fading smoothly between 55% and 100% brightness while both route badges and destination labels remain steady. Predictions refresh every 15 seconds from the free UmoIQ endpoint used by SFMTA's public stop pages; no signup is required.
 
 ## Build from source
 
