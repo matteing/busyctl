@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/matteing/busyctl/internal/applemusic"
+	"github.com/matteing/busyctl/internal/clock"
 )
 
 func TestRootHelpDoesNotRunAnApp(t *testing.T) {
@@ -26,8 +27,76 @@ func TestRootHelpDoesNotRunAnApp(t *testing.T) {
 	if called {
 		t.Fatal("root help contacted an app runner")
 	}
-	if text := output.String(); !strings.Contains(text, "apple-music") || !strings.Contains(text, "--host") {
+	if text := output.String(); !strings.Contains(text, "apple-music") || !strings.Contains(text, "clock") || !strings.Contains(text, "--host") {
 		t.Fatalf("root help is incomplete:\n%s", text)
+	}
+}
+
+func TestClockDefaultsReachRunner(t *testing.T) {
+	t.Setenv("BUSYBAR_HOST", "")
+	t.Setenv("BUSYBAR_TOKEN", "")
+	var captured clock.Config
+	command := newRootCommand(nil, func(_ context.Context, config clock.Config) error {
+		captured = config
+		return nil
+	})
+	command.SetArgs([]string{"clock"})
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := clock.DefaultConfig()
+	if captured != want {
+		t.Fatalf("default clock config = %#v, want %#v", captured, want)
+	}
+}
+
+func TestClockFlagsReachRunner(t *testing.T) {
+	t.Setenv("BUSYBAR_HOST", "busybar.local")
+	t.Setenv("BUSYBAR_TOKEN", "from-environment")
+	var captured clock.Config
+	command := newRootCommand(nil, func(_ context.Context, config clock.Config) error {
+		captured = config
+		return nil
+	})
+	command.SetArgs([]string{
+		"clock",
+		"--host", "192.0.2.40",
+		"--token", "from-flag",
+		"--priority", "42",
+		"--keep-display",
+		"--12-hour",
+		"--seconds=false",
+		"--blink-colon",
+	})
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := clock.Config{
+		Host:        "192.0.2.40",
+		Token:       "from-flag",
+		Priority:    42,
+		KeepDisplay: true,
+		TwelveHour:  true,
+		ShowSeconds: false,
+		BlinkColon:  true,
+	}
+	if captured != want {
+		t.Fatalf("clock flag config = %#v, want %#v", captured, want)
+	}
+}
+
+func TestInvalidClockPriorityNeverRuns(t *testing.T) {
+	called := false
+	command := newRootCommand(nil, func(context.Context, clock.Config) error {
+		called = true
+		return nil
+	})
+	command.SetArgs([]string{"clock", "--priority", "0"})
+	if err := command.ExecuteContext(context.Background()); err == nil {
+		t.Fatal("invalid clock priority unexpectedly succeeded")
+	}
+	if called {
+		t.Fatal("invalid clock priority invoked runner")
 	}
 }
 

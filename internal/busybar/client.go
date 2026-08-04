@@ -38,6 +38,7 @@ type Element struct {
 	Y                 int    `json:"y"`
 	Text              string `json:"text,omitempty"`
 	Font              string `json:"font,omitempty"`
+	Align             string `json:"align,omitempty"`
 	Color             string `json:"color,omitempty"`
 	Path              string `json:"path,omitempty"`
 	Display           string `json:"display"`

@@ -17,6 +17,7 @@ import (
 type fakeBar struct {
 	drawings  []barapi.Drawing
 	clears    int
+	failClear bool
 	drawCalls int
 	failDraws int
 	uploads   []string
@@ -35,7 +36,35 @@ func (f *fakeBar) Draw(_ context.Context, drawing barapi.Drawing) error {
 	f.drawings = append(f.drawings, drawing)
 	return nil
 }
-func (f *fakeBar) Clear(context.Context, string) error { f.clears++; return nil }
+func (f *fakeBar) Clear(context.Context, string) error {
+	f.clears++
+	if f.failClear {
+		return errors.New("clear failure")
+	}
+	return nil
+}
+
+func TestStartupResetClearsPreviousComposition(t *testing.T) {
+	t.Parallel()
+
+	device := &fakeBar{}
+	if err := resetDisplay(context.Background(), device); err != nil {
+		t.Fatal(err)
+	}
+	if device.clears != 1 {
+		t.Fatalf("startup clears = %d, want 1", device.clears)
+	}
+}
+
+func TestStartupResetReportsClearFailure(t *testing.T) {
+	t.Parallel()
+
+	device := &fakeBar{failClear: true}
+	err := resetDisplay(context.Background(), device)
+	if err == nil || err.Error() != "reset BUSY Bar display: clear failure" {
+		t.Fatalf("reset error = %v", err)
+	}
+}
 
 func TestConfigViews(t *testing.T) {
 	t.Parallel()
@@ -129,11 +158,11 @@ func TestOnePixelOuterLayout(t *testing.T) {
 	if artworkSize != 14 {
 		t.Fatalf("artwork size = %d, want 14", artworkSize)
 	}
-	if title.X != 16 || title.Y != 1 || title.Width != 55 {
-		t.Fatalf("title bounds = x%d y%d w%d, want x16 y1 w55", title.X, title.Y, title.Width)
+	if title.X != 16 || title.Y != 0 || title.Width != 55 {
+		t.Fatalf("title bounds = x%d y%d w%d, want x16 y0 w55", title.X, title.Y, title.Width)
 	}
-	if artist.X != 16 || artist.Y != 8 || artist.Width != 55 {
-		t.Fatalf("artist bounds = x%d y%d w%d, want x16 y8 w55", artist.X, artist.Y, artist.Width)
+	if artist.X != 16 || artist.Y != 7 || artist.Width != 55 {
+		t.Fatalf("artist bounds = x%d y%d w%d, want x16 y7 w55", artist.X, artist.Y, artist.Width)
 	}
 }
 

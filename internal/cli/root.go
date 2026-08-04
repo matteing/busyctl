@@ -4,12 +4,14 @@ import (
 	"context"
 
 	"github.com/matteing/busyctl/internal/applemusic"
+	"github.com/matteing/busyctl/internal/clock"
 	"github.com/spf13/cobra"
 )
 
 var version = "dev"
 
 type AppleMusicRunner func(context.Context, applemusic.Config) error
+type ClockRunner func(context.Context, clock.Config) error
 
 type deviceFlags struct {
 	host        string
@@ -21,8 +23,15 @@ type deviceFlags struct {
 // NewRootCommand builds the complete busyctl command tree. The runner is
 // injectable so command parsing and help can be tested without device I/O.
 func NewRootCommand(runAppleMusic AppleMusicRunner) *cobra.Command {
+	return newRootCommand(runAppleMusic, nil)
+}
+
+func newRootCommand(runAppleMusic AppleMusicRunner, runClock ClockRunner) *cobra.Command {
 	if runAppleMusic == nil {
 		runAppleMusic = applemusic.Run
+	}
+	if runClock == nil {
+		runClock = clock.Run
 	}
 	defaults := applemusic.DefaultConfig()
 	device := deviceFlags{
@@ -55,6 +64,7 @@ func NewRootCommand(runAppleMusic AppleMusicRunner) *cobra.Command {
 	flags.BoolVar(&device.keepDisplay, "keep-display", false, "leave the final frame on exit")
 
 	root.AddCommand(newAppleMusicCommand(&device, defaults, runAppleMusic))
+	root.AddCommand(newClockCommand(&device, clock.DefaultConfig(), runClock))
 	return root
 }
 

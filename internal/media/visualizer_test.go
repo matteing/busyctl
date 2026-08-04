@@ -149,8 +149,8 @@ func TestVisualizerEdgeFadeEmergesSmoothlyFromTheWaveformBounds(t *testing.T) {
 	}
 	top := visualizerEdgeFade(10, 0, 21, 15)
 	bottom := visualizerEdgeFade(10, 14, 21, 15)
-	if !(top < bottom && bottom < 1) {
-		t.Fatalf("top/bottom fades = %.3f/%.3f, want a gentler but visible bottom fade", top, bottom)
+	if top >= 1 || bottom != 1 {
+		t.Fatalf("top/bottom fades = %.3f/%.3f, want top faded and bottom unfaded", top, bottom)
 	}
 
 	source := color.NRGBA{R: 230, G: 45, B: 170, A: 255}

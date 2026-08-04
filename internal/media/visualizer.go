@@ -56,8 +56,8 @@ func GenerateVisualizerPNGs(width, height int, palette [3]color.NRGBA) ([][]byte
 }
 
 // fadeVisualizerEdge applies a small perceptual vignette inside the waveform
-// rectangle. The album art remains untouched. The bottom starts brighter than
-// the other edges so the spectrum still feels grounded and colorful.
+// rectangle. The album art remains untouched, and the bottom stays at full
+// brightness so the spectrum remains firmly grounded on the display edge.
 func fadeVisualizerEdge(source color.NRGBA, x, y, width, height int) color.NRGBA {
 	fade := visualizerEdgeFade(x, y, width, height)
 	if fade >= 1 {
@@ -77,11 +77,9 @@ func visualizerEdgeFade(x, y, width, height int) float64 {
 	}
 	horizontalDistance := float64(min(x, width-1-x))
 	topDistance := float64(y)
-	bottomDistance := float64(height - 1 - y)
 	horizontal := 0.28 + 0.72*smoothstep(0, 3, horizontalDistance)
 	top := 0.28 + 0.72*smoothstep(0, 3, topDistance)
-	bottom := 0.52 + 0.48*smoothstep(0, 3, bottomDistance)
-	return min(horizontal, top, bottom)
+	return min(horizontal, top)
 }
 
 type spectrumEvent struct {

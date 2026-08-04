@@ -14,21 +14,24 @@ import (
 )
 
 const (
-	ApplicationID     = "busybar_apple_music"
-	defaultSource     = "https://matteing.com/api/now-playing"
-	displayWidth      = 72
-	displayHeight     = 16
-	outerPadding      = 1
-	artworkSize       = displayHeight - 2*outerPadding
-	artworkX          = outerPadding
-	artworkY          = outerPadding
-	contentX          = artworkX + artworkSize + 1
-	contentY          = outerPadding
-	contentWidth      = displayWidth - contentX - outerPadding
-	contentHeight     = displayHeight - 2*outerPadding
-	textWidth         = contentWidth
-	titleY            = contentY
-	artistY           = contentY + 7
+	ApplicationID = "busybar_apple_music"
+	defaultSource = "https://matteing.com/api/now-playing"
+	displayWidth  = 72
+	displayHeight = 16
+	outerPadding  = 1
+	artworkSize   = displayHeight - 2*outerPadding
+	artworkX      = outerPadding
+	artworkY      = outerPadding
+	contentX      = artworkX + artworkSize + 1
+	contentY      = outerPadding
+	contentWidth  = displayWidth - contentX - outerPadding
+	contentHeight = displayHeight - 2*outerPadding
+	textWidth     = contentWidth
+	// The small font has two blank rows above its visible glyphs. Explicit
+	// top-left origins keep the visible two-line block centered without relying
+	// on firmware-specific vertical anchor calculations.
+	titleY            = 0
+	artistY           = 7
 	ViewTitles        = "titles"
 	ViewVisualizer    = "visualizer"
 	defaultScrollRate = 1500
@@ -178,6 +181,9 @@ func Run(ctx context.Context, config Config) error {
 	if err != nil {
 		return fmt.Errorf("connect to BUSY Bar at %s: %w", opts.host, err)
 	}
+	if err := resetDisplay(ctx, device); err != nil {
+		return err
+	}
 	fmt.Printf("Connected to BUSY Bar at %s (API %s)\n", opts.host, version.APISemver)
 
 	app := &application{
@@ -197,6 +203,16 @@ func Run(ctx context.Context, config Config) error {
 		}()
 	}
 	return app.run(ctx)
+}
+
+// resetDisplay removes any composition left behind by an earlier busyctl
+// process before the new process starts uploading assets. It runs exactly once
+// at startup; track changes continue to swap complete scenes without clearing.
+func resetDisplay(ctx context.Context, device bar) error {
+	if err := device.Clear(ctx, ApplicationID); err != nil {
+		return fmt.Errorf("reset BUSY Bar display: %w", err)
+	}
+	return nil
 }
 
 func (a *application) run(ctx context.Context) error {

@@ -2,10 +2,11 @@
 
 `busyctl` is a single, self-contained Go CLI for custom BUSY Bar apps. It uses the stock HTTP API; no custom firmware is required.
 
-The first bundled app mirrors Apple Music now-playing data:
+Bundled apps include Apple Music now-playing and a full-screen clock:
 
 ```sh
 busyctl apple-music
+busyctl clock
 ```
 
 ## Install
@@ -49,6 +50,30 @@ busyctl --host 192.168.1.50 --token 1234 apple-music
 The process polls `https://matteing.com/api/now-playing` every ten seconds. Use `--source` to override that endpoint. `BUSYBAR_HOST` and `BUSYBAR_TOKEN` provide equivalent environment configuration.
 
 Press Ctrl+C to stop. Use `--keep-display` to retain the final frame. Run `busyctl --help` or `busyctl apple-music --help` for every option.
+
+## Clock
+
+The default face matches [Max Swinkels' community clock](https://maxswinkels.github.io/busybar-apps/apps/clock/): a white `extra_large` 24-hour clock with seconds, centered on the 72×16 display.
+
+```sh
+busyctl clock
+```
+
+Use native 12-hour time with an AM/PM indicator:
+
+```sh
+busyctl clock --12-hour
+```
+
+Seconds and blinking colons are independently configurable:
+
+```sh
+busyctl clock --seconds=false
+busyctl clock --blink-colon
+busyctl clock --12-hour --seconds=false --blink-colon
+```
+
+The clock aligns updates to the next minute, second, or half-second boundary and only redraws when the visible state changes.
 
 ### Display design
 
