@@ -37,7 +37,9 @@ USB uses `10.0.4.20` by default:
 busyctl music
 ```
 
-![Apple Music titles view on the BUSY Bar](docs/screenshots/apple-music-titles.png)
+<p align="center">
+  <img src="docs/screenshots/apple-music-titles.png" alt="Apple Music titles view on the BUSY Bar" width="520">
+</p>
 
 Start directly in visualizer view:
 
@@ -45,7 +47,9 @@ Start directly in visualizer view:
 busyctl music --view visualizer
 ```
 
-![Apple Music visualizer view on the BUSY Bar](docs/screenshots/apple-music-visualizer.png)
+<p align="center">
+  <img src="docs/screenshots/apple-music-visualizer.png" alt="Apple Music visualizer view on the BUSY Bar" width="520">
+</p>
 
 For Wi-Fi:
 
@@ -73,7 +77,9 @@ The face is based on [Max Swinkels' community clock](https://maxswinkels.github.
 busyctl clock
 ```
 
-![Clock app on the BUSY Bar](docs/screenshots/clock.png)
+<p align="center">
+  <img src="docs/screenshots/clock.png" alt="Clock app on the BUSY Bar" width="520">
+</p>
 
 Enable seconds or switch back to the original 24-hour layout:
 
@@ -97,7 +103,9 @@ The clock aligns updates to the next minute, second, or half-second boundary and
 busyctl tokens
 ```
 
-![Codex token activity graph on the BUSY Bar](docs/screenshots/tokens-graph.png)
+<p align="center">
+  <img src="docs/screenshots/tokens-graph.png" alt="Codex token activity graph on the BUSY Bar" width="520">
+</p>
 
 The display shows a high-contrast GitHub-style 27-week daily activity grid with the all-time local token total tucked against the right edge in the BUSY Bar's native font. It reads the running user's Codex state database (`~/.codex/state_5.sqlite`) in read-only mode and samples five times per second; it does not read or transmit Codex credentials. Override discovery with `CODEX_STATE_DB` or `--database`, and adjust the refresh interval with `--poll`.
 
@@ -107,7 +115,9 @@ For a focused live view, show the exact all-time total centered over a scrolling
 busyctl tokens --view count
 ```
 
-![Codex live token count on the BUSY Bar](docs/screenshots/tokens-count.png)
+<p align="center">
+  <img src="docs/screenshots/tokens-count.png" alt="Codex live token count on the BUSY Bar" width="520">
+</p>
 
 Token totals are grouped by the day each local Codex task was created, matching the available local task accounting. A task that remains active across midnight stays attributed to its creation day.
 
@@ -117,7 +127,9 @@ Token totals are grouped by the day each local Codex task was created, matching 
 busyctl muni
 ```
 
-![Muni arrivals on the BUSY Bar](docs/screenshots/muni.png)
+<p align="center">
+  <img src="docs/screenshots/muni.png" alt="Muni arrivals on the BUSY Bar" width="520">
+</p>
 
 By default, `muni` shows T Third arrivals at UCSF/Chase Center. Select the nearest J, K, L, M, N, or T platform with a location supplied at runtime:
 
