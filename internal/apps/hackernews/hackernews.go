@@ -20,7 +20,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	barapi "github.com/matteing/busybar-apps/internal/busybar"
+	barapi "github.com/matteing/busyctl/internal/busybar"
 )
 
 const (

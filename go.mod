@@ -1,4 +1,4 @@
-module github.com/matteing/busybar-apps
+module github.com/matteing/busyctl
 
 go 1.26.5
 

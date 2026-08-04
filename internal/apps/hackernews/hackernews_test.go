@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	barapi "github.com/matteing/busybar-apps/internal/busybar"
+	barapi "github.com/matteing/busyctl/internal/busybar"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

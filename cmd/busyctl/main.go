@@ -13,9 +13,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/matteing/busybar-apps/internal/apps/applemusic"
-	"github.com/matteing/busybar-apps/internal/apps/hackernews"
-	barapi "github.com/matteing/busybar-apps/internal/busybar"
+	"github.com/matteing/busyctl/internal/apps/applemusic"
+	"github.com/matteing/busyctl/internal/apps/hackernews"
+	barapi "github.com/matteing/busyctl/internal/busybar"
 )
 
 // version is replaced from the release tag by the GitHub Actions build.

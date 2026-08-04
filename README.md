@@ -1,14 +1,14 @@
 # BUSY Bar Apps
 
-[![CI](https://github.com/matteing/busybar-apps/actions/workflows/ci.yml/badge.svg)](https://github.com/matteing/busybar-apps/actions/workflows/ci.yml)
-[![GitHub release](https://img.shields.io/github/v/release/matteing/busybar-apps)](https://github.com/matteing/busybar-apps/releases/latest)
+[![CI](https://github.com/matteing/busyctl/actions/workflows/ci.yml/badge.svg)](https://github.com/matteing/busyctl/actions/workflows/ci.yml)
+[![GitHub release](https://img.shields.io/github/v/release/matteing/busyctl)](https://github.com/matteing/busyctl/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A single, self-contained Go binary for running host-side apps on a BUSY Bar. Apps use the release firmware HTTP API; they do not install custom firmware.
 
 ## Install
 
-Download the archive for your Mac from [GitHub Releases](https://github.com/matteing/busybar-apps/releases/latest):
+Download the archive for your Mac from [GitHub Releases](https://github.com/matteing/busyctl/releases/latest):
 
 - `darwin_arm64` for Apple Silicon Macs
 - `darwin_amd64` for Intel Macs
