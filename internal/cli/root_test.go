@@ -6,9 +6,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/matteing/busyctl/internal/applemusic"
 	"github.com/matteing/busyctl/internal/clock"
+	"github.com/matteing/busyctl/internal/codextokens"
+	"github.com/matteing/busyctl/internal/muni"
 )
 
 func TestRootHelpDoesNotRunAnApp(t *testing.T) {
@@ -27,8 +30,40 @@ func TestRootHelpDoesNotRunAnApp(t *testing.T) {
 	if called {
 		t.Fatal("root help contacted an app runner")
 	}
-	if text := output.String(); !strings.Contains(text, "apple-music") || !strings.Contains(text, "clock") || !strings.Contains(text, "--host") {
+	if text := output.String(); !strings.Contains(text, "apple-music") || !strings.Contains(text, "clock") || !strings.Contains(text, "tokens") || !strings.Contains(text, "muni") || !strings.Contains(text, "--host") {
 		t.Fatalf("root help is incomplete:\n%s", text)
+	}
+}
+
+func TestCodexTokenFlagsReachRunner(t *testing.T) {
+	var captured codextokens.Config
+	command := newRootCommandWithApps(nil, nil, nil, func(_ context.Context, config codextokens.Config) error {
+		captured = config
+		return nil
+	})
+	command.SetArgs([]string{"tokens", "--view", "count", "--database", "/tmp/codex.sqlite", "--poll", "5s", "--priority", "41", "--keep-display"})
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if captured.Database != "/tmp/codex.sqlite" || captured.PollInterval != 5*time.Second || captured.Priority != 41 || captured.View != codextokens.ViewCount || !captured.KeepDisplay {
+		t.Fatalf("Codex token config = %#v", captured)
+	}
+}
+
+func TestMuniLocationReachesRunner(t *testing.T) {
+	t.Setenv("BUSYBAR_HOST", "")
+	t.Setenv("BUSYBAR_TOKEN", "")
+	var captured muni.Config
+	command := newRootCommandWithMuni(nil, nil, func(_ context.Context, config muni.Config) error {
+		captured = config
+		return nil
+	})
+	command.SetArgs([]string{"muni", "37.7694,-122.3875", "--priority", "42", "--keep-display"})
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if captured.Location != "37.7694,-122.3875" || captured.Priority != 42 || !captured.KeepDisplay {
+		t.Fatalf("Muni config = %#v", captured)
 	}
 }
 

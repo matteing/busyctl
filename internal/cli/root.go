@@ -5,6 +5,8 @@ import (
 
 	"github.com/matteing/busyctl/internal/applemusic"
 	"github.com/matteing/busyctl/internal/clock"
+	"github.com/matteing/busyctl/internal/codextokens"
+	"github.com/matteing/busyctl/internal/muni"
 	"github.com/spf13/cobra"
 )
 
@@ -12,6 +14,8 @@ var version = "dev"
 
 type AppleMusicRunner func(context.Context, applemusic.Config) error
 type ClockRunner func(context.Context, clock.Config) error
+type CodexTokensRunner func(context.Context, codextokens.Config) error
+type MuniRunner func(context.Context, muni.Config) error
 
 type deviceFlags struct {
 	host        string
@@ -27,11 +31,25 @@ func NewRootCommand(runAppleMusic AppleMusicRunner) *cobra.Command {
 }
 
 func newRootCommand(runAppleMusic AppleMusicRunner, runClock ClockRunner) *cobra.Command {
+	return newRootCommandWithMuni(runAppleMusic, runClock, nil)
+}
+
+func newRootCommandWithMuni(runAppleMusic AppleMusicRunner, runClock ClockRunner, runMuni MuniRunner) *cobra.Command {
+	return newRootCommandWithApps(runAppleMusic, runClock, runMuni, nil)
+}
+
+func newRootCommandWithApps(runAppleMusic AppleMusicRunner, runClock ClockRunner, runMuni MuniRunner, runCodexTokens CodexTokensRunner) *cobra.Command {
 	if runAppleMusic == nil {
 		runAppleMusic = applemusic.Run
 	}
 	if runClock == nil {
 		runClock = clock.Run
+	}
+	if runMuni == nil {
+		runMuni = muni.Run
+	}
+	if runCodexTokens == nil {
+		runCodexTokens = codextokens.Run
 	}
 	defaults := applemusic.DefaultConfig()
 	device := deviceFlags{
@@ -65,6 +83,8 @@ func newRootCommand(runAppleMusic AppleMusicRunner, runClock ClockRunner) *cobra
 
 	root.AddCommand(newAppleMusicCommand(&device, defaults, runAppleMusic))
 	root.AddCommand(newClockCommand(&device, clock.DefaultConfig(), runClock))
+	root.AddCommand(newCodexTokensCommand(&device, codextokens.DefaultConfig(), runCodexTokens))
+	root.AddCommand(newMuniCommand(&device, muni.DefaultConfig(), runMuni))
 	return root
 }
 

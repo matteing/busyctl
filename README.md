@@ -2,11 +2,13 @@
 
 `busyctl` is a single, self-contained Go CLI for custom BUSY Bar apps. It uses the stock HTTP API; no custom firmware is required.
 
-Bundled apps include Apple Music now-playing and a full-screen clock:
+Bundled apps include Apple Music now-playing, a full-screen clock, live Codex token activity, and live Muni arrivals:
 
 ```sh
 busyctl apple-music
 busyctl clock
+busyctl tokens
+busyctl muni
 ```
 
 ## Install
@@ -53,7 +55,7 @@ Press Ctrl+C to stop. Use `--keep-display` to retain the final frame. Run `busyc
 
 ## Clock
 
-The face is based on [Max Swinkels' community clock](https://maxswinkels.github.io/busybar-apps/apps/clock/). By default it shows 12-hour local time with AM/PM and no seconds, while the colon smoothly fades through one cycle each second without disappearing.
+The face is based on [Max Swinkels' community clock](https://maxswinkels.github.io/busybar-apps/apps/clock/). By default it shows 12-hour local time with AM/PM and no seconds, while the colon smoothly fades through one cycle each second.
 
 ```sh
 busyctl clock
@@ -66,14 +68,52 @@ busyctl clock --seconds
 busyctl clock --12-hour=false --seconds
 ```
 
-Seconds and fading colons are independently configurable:
+Seconds and blinking colons are independently configurable:
 
 ```sh
 busyctl clock --blink-colon=false
 busyctl clock --seconds --blink-colon
 ```
 
-The clock aligns digit updates to time boundaries and renders the colon fade at a bounded 25 FPS without queuing frames.
+The clock aligns updates to the next minute, second, or half-second boundary and only redraws when the visible state changes.
+
+## Tokens
+
+```sh
+busyctl tokens
+```
+
+The display shows a high-contrast GitHub-style 27-week daily activity grid with the all-time local token total tucked against the right edge in the BUSY Bar's native font. It reads the running user's Codex state database (`~/.codex/state_5.sqlite`) in read-only mode and samples five times per second; it does not read or transmit Codex credentials. Override discovery with `CODEX_STATE_DB` or `--database`, and adjust the refresh interval with `--poll`.
+
+For a focused live view, show the exact all-time total centered over a scrolling 14-second token-rate sparkline. The background uses a filled purple-to-cyan gradient and smooth square-root-scaled activity pulses, while a lightweight total-only query samples every 200 milliseconds:
+
+```sh
+busyctl tokens --view count
+```
+
+Token totals are grouped by the day each local Codex task was created, matching the available local task accounting. A task that remains active across midnight stays attributed to its creation day.
+
+## Muni
+
+```sh
+busyctl muni
+```
+
+By default, `muni` shows two aligned rows at once: N Judah at Embarcadero & Folsom and T Third at UCSF/Chase Center. No home address or coordinates are stored in the repository or written to disk. Pass precise coordinates at runtime to select the nearest J, K, L, M, N, or T platform:
+
+```sh
+busyctl muni --location 37.7694,-122.3875
+```
+
+`busyctl muni openai` and `busyctl muni howard` select either preset directly. `MUNI_LOCATION` provides the same private runtime override, and `--location-source` can point to a private service returning `{"latitude": ..., "longitude": ...}`.
+
+Optional auto mode uses the free `ipwho.is` network-location estimate. Because that sends your public IP address to the provider, it requires explicit opt-in and never runs silently:
+
+```sh
+busyctl muni auto --allow-network-location
+```
+
+The display follows the reference sign style: compact 7×7 route markers share one left column, destinations use soft mint text, and both ETAs lock to the same right edge. A row with a train three or four minutes away fades smoothly between 55% and 100% brightness without affecting the other row. Predictions refresh every 15 seconds from the free UmoIQ endpoint used by SFMTA's public stop pages; no signup is required.
 
 ### Display design
 
