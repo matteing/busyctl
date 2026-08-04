@@ -102,6 +102,14 @@ func (c *Client) Clear(ctx context.Context, applicationName string) error {
 	return c.send(req, nil)
 }
 
+func (c *Client) ClearAll(ctx context.Context) error {
+	req, err := c.request(ctx, http.MethodDelete, "/api/display/draw", nil)
+	if err != nil {
+		return err
+	}
+	return c.send(req, nil)
+}
+
 func (c *Client) doJSON(ctx context.Context, method, path string, body, result any) error {
 	var reader io.Reader
 	if body != nil {

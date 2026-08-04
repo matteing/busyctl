@@ -13,30 +13,45 @@ mise install
 ## Build
 
 ```sh
-mise exec -- go build -o bin/busybar ./cmd/busybar
+mise run build
 ```
 
-The resulting `bin/busybar` file has no runtime dependencies.
+The resulting `bin/busyctl` file has no runtime dependencies.
+
+Install it on your path:
+
+```sh
+install -m 755 bin/busyctl ~/.local/bin/busyctl
+```
 
 ## Use
 
 Run without arguments for an interactive app selector:
 
 ```sh
-./bin/busybar
+./bin/busyctl
 ```
 
 Or select an app directly:
 
 ```sh
-./bin/busybar apps
-./bin/busybar apple-music
+./bin/busyctl apps
+./bin/busyctl apple-music
+```
+
+`busyctl status` checks connectivity and reports the device API version. Display
+content can be removed by app, without disturbing other apps:
+
+```sh
+busyctl status
+busyctl clear apple-music
+busyctl clear --all
 ```
 
 USB uses `10.0.4.20` by default. For Wi-Fi:
 
 ```sh
-./bin/busybar apple-music --host 192.168.1.50 --token 1234
+./bin/busyctl apple-music --host 192.168.1.50 --token 1234
 ```
 
 Environment variables `BUSYBAR_HOST` and `BUSYBAR_TOKEN` are also supported.
@@ -48,9 +63,9 @@ The Apple Music app polls `https://matteing.com/api/now-playing` every 10 second
 Useful options:
 
 ```sh
-./bin/busybar apple-music --help
-./bin/busybar apple-music --demo
-./bin/busybar apple-music --once --keep-display
+./bin/busyctl apple-music --help
+./bin/busyctl apple-music --demo
+./bin/busyctl apple-music --once --keep-display
 ```
 
 `--demo` uses the first recent album when nothing is currently playing, which is useful for display testing.
@@ -58,9 +73,9 @@ Useful options:
 The default native scroll speed is 1500 pixels per minute (25 pixels per second). Adjust it without rebuilding:
 
 ```sh
-./bin/busybar apple-music --scroll-rate 1200
+./bin/busyctl apple-music --scroll-rate 1200
 ```
 
 ## Add another app
 
-Create a package under `internal/apps/<name>` with a `Run(context.Context, []string) error` entry point, then add it to the registry in `cmd/busybar/main.go`. Shared device operations belong in `internal/busybar`; shared media transformations belong in `internal/media`.
+Create a package under `internal/apps/<name>` with a `Run(context.Context, []string) error` entry point and exported application ID, then add it to the registry in `cmd/busyctl/main.go`. Shared device operations belong in `internal/busybar`; shared media transformations belong in `internal/media`.

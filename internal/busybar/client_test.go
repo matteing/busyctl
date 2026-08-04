@@ -64,3 +64,27 @@ func TestClientConnectAndDraw(t *testing.T) {
 		t.Fatalf("unexpected draw request: %#v", drawRequest)
 	}
 }
+
+func TestClearAllOmitsApplicationQuery(t *testing.T) {
+	t.Parallel()
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/api/display/draw" {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
+		}
+		if r.URL.RawQuery != "" {
+			t.Errorf("query = %q", r.URL.RawQuery)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"result":"ok"}`)),
+			Request:    r,
+		}, nil
+	})
+
+	client := New("busybar.test", "")
+	client.http.Transport = transport
+	if err := client.ClearAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}

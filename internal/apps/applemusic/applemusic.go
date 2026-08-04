@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	appID         = "busybar_apple_music"
+	ApplicationID = "busybar_apple_music"
 	coverFilename = "cover.png"
 	defaultSource = "https://matteing.com/api/now-playing"
 	displayWidth  = 72
@@ -96,7 +96,7 @@ func Run(ctx context.Context, args []string) error {
 	fmt.Printf("Connected to BUSY Bar at %s (API %s)\n", opts.host, version.APISemver)
 	// Starting from a clean application layer ensures old element animation state
 	// cannot retain a previous font or scroll rate across binary restarts.
-	if err := bar.Clear(ctx, appID); err != nil {
+	if err := bar.Clear(ctx, ApplicationID); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not clear previous Apple Music display: %v\n", err)
 	} else {
 		// Display commands are applied asynchronously by the firmware. Give the
@@ -112,7 +112,7 @@ func Run(ctx context.Context, args []string) error {
 		defer func() {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			if err := bar.Clear(cleanupCtx, appID); err != nil {
+			if err := bar.Clear(cleanupCtx, ApplicationID); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: could not clear display: %v\n", err)
 			}
 		}()
@@ -144,7 +144,7 @@ func parseOptions(args []string) (options, error) {
 	flags.BoolVar(&opts.keepDisplay, "keep-display", false, "do not clear the display on exit")
 	flags.Usage = func() {
 		fmt.Fprintln(flags.Output(), "Show Apple Music now-playing information on a BUSY Bar.")
-		fmt.Fprintln(flags.Output(), "\nUsage: busybar apple-music [flags]")
+		fmt.Fprintln(flags.Output(), "\nUsage: busyctl apple-music [flags]")
 		fmt.Fprintln(flags.Output())
 		flags.PrintDefaults()
 	}
@@ -237,7 +237,7 @@ func (a *application) render(ctx context.Context) error {
 			return nil
 		}
 		drawing := barapi.DisplayElements{
-			ApplicationName: appID,
+			ApplicationName: ApplicationID,
 			Priority:        a.options.priority,
 			Elements: []barapi.Element{
 				{
@@ -265,7 +265,7 @@ func (a *application) render(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := a.bar.UploadAsset(ctx, appID, coverFilename, artwork); err != nil {
+		if err := a.bar.UploadAsset(ctx, ApplicationID, coverFilename, artwork); err != nil {
 			return fmt.Errorf("upload album cover: %w", err)
 		}
 		a.coverURL = coverURL
@@ -299,7 +299,7 @@ func (a *application) render(ctx context.Context) error {
 	)
 
 	if err := a.bar.Draw(ctx, barapi.DisplayElements{
-		ApplicationName: appID,
+		ApplicationName: ApplicationID,
 		Priority:        a.options.priority,
 		Elements:        elements,
 	}); err != nil {
@@ -316,7 +316,7 @@ func (s sourceClient) fetch(ctx context.Context) (nowPlayingResponse, error) {
 		return result, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "busybar-apple-music/0.1")
+	req.Header.Set("User-Agent", "busyctl-apple-music/0.2")
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return result, err
