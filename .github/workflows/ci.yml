@@ -31,7 +31,7 @@ jobs:
         run: go vet ./...
 
       - name: Build
-        run: go build -trimpath -o bin/busyctl ./cmd/busyctl
+        run: go build -trimpath -o bin/applemusic ./cmd/applemusic
 
       - name: Check formatting
         run: test -z "$(gofmt -l .)"

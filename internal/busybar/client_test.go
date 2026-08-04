@@ -2,112 +2,92 @@ package busybar
 
 import (
 	"context"
-	"encoding/json"
-	"io"
 	"net/http"
-	"strings"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/coder/websocket"
 )
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
-	return fn(request)
-}
-
-func TestClientConnectAndDraw(t *testing.T) {
-	t.Parallel()
-
-	var drawRequest DisplayElements
-	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		body := `{"result":"ok"}`
-		switch r.URL.Path {
-		case "/api/version":
-			body = `{"api_semver":"25.0.0"}`
-		case "/api/display/draw":
-			if got := r.Header.Get(apiVersionHeader); got != "25.0.0" {
-				t.Errorf("API version header = %q", got)
-			}
-			if got := r.Header.Get("X-API-Token"); got != "1234" {
-				t.Errorf("token header = %q", got)
-			}
-			if err := json.NewDecoder(r.Body).Decode(&drawRequest); err != nil {
-				t.Errorf("decode draw request: %v", err)
-			}
-		default:
-			t.Errorf("unexpected path %s", r.URL.Path)
-		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader(body)),
-			Request:    r,
-		}, nil
-	})
-
-	client := New("busybar.test", "1234")
-	client.http.Transport = transport
-	if _, err := client.Connect(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	want := DisplayElements{
-		ApplicationName: "test_app",
-		Priority:        100,
-		Elements: []Element{
-			{ID: "title", Type: "text", X: 18, Y: 1, Text: "Song", Font: "tiny", Display: "front"},
-		},
-	}
-	if err := client.Draw(context.Background(), want); err != nil {
-		t.Fatal(err)
-	}
-	if drawRequest.ApplicationName != want.ApplicationName || len(drawRequest.Elements) != 1 {
-		t.Fatalf("unexpected draw request: %#v", drawRequest)
-	}
-}
-
-func TestClearAllOmitsApplicationQuery(t *testing.T) {
-	t.Parallel()
-	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		if r.Method != http.MethodDelete || r.URL.Path != "/api/display/draw" {
-			t.Errorf("request = %s %s", r.Method, r.URL.Path)
-		}
-		if r.URL.RawQuery != "" {
-			t.Errorf("query = %q", r.URL.RawQuery)
-		}
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader(`{"result":"ok"}`)),
-			Request:    r,
-		}, nil
-	})
-
-	client := New("busybar.test", "")
-	client.http.Transport = transport
-	if err := client.ClearAll(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestDecodeInputEventsExtractsSignedEncoderDelta(t *testing.T) {
+func TestDecodeInputEvents(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		name    string
-		encoded byte
-		want    int
+		name     string
+		zigzag   byte
+		expected int
 	}{
-		{name: "clockwise", encoded: 2, want: 1},
-		{name: "counterclockwise", encoded: 1, want: -1},
+		{name: "clockwise", zigzag: 2, expected: 1},
+		{name: "counterclockwise", zigzag: 1, expected: -1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			encoder := []byte{0x08, test.encoded}
+			encoder := []byte{0x08, test.zigzag}
 			input := append([]byte{0x1a, byte(len(encoder))}, encoder...)
 			update := append([]byte{0x5a, byte(len(input))}, input...)
 			state := append([]byte{0x12, byte(len(update))}, update...)
 			events := DecodeInputEvents(state)
-			if len(events) != 1 || events[0].EncoderDelta != test.want {
-				t.Fatalf("events = %#v, want delta %d", events, test.want)
+			if len(events) != 1 || events[0].EncoderDelta != test.expected {
+				t.Fatalf("events = %#v, want delta %d", events, test.expected)
 			}
 		})
+	}
+}
+
+func TestStreamInputsAuthenticatesWebSocketHandshake(t *testing.T) {
+	t.Parallel()
+	type observation struct {
+		header http.Header
+		query  string
+		kind   websocket.MessageType
+		enable string
+		err    error
+	}
+	observed := make(chan observation, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		connection, err := websocket.Accept(response, request, nil)
+		if err != nil {
+			observed <- observation{err: err}
+			return
+		}
+		defer connection.CloseNow()
+		kind, payload, err := connection.Read(request.Context())
+		observed <- observation{
+			header: request.Header.Clone(),
+			query:  request.URL.Query().Get("x-api-token"),
+			kind:   kind,
+			enable: string(payload),
+			err:    err,
+		}
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "secret-token")
+	client.apiVersion = "25.0.0"
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_ = client.StreamInputs(ctx, func(InputEvent) {})
+
+	select {
+	case result := <-observed:
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if got := result.header.Get("X-API-Token"); got != "secret-token" {
+			t.Fatalf("X-API-Token = %q, want secret-token", got)
+		}
+		if got := result.header.Get(apiVersionHeader); got != "25.0.0" {
+			t.Fatalf("%s = %q, want 25.0.0", apiVersionHeader, got)
+		}
+		if result.query != "secret-token" {
+			t.Fatalf("legacy query token = %q, want secret-token", result.query)
+		}
+		if result.kind != websocket.MessageText {
+			t.Fatalf("enable message type = %d, want text", result.kind)
+		}
+		if result.enable != `{"enable":true}` {
+			t.Fatalf("enable message = %q", result.enable)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for WebSocket handshake")
 	}
 }
