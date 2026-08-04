@@ -30,7 +30,7 @@ func TestRootHelpDoesNotRunAnApp(t *testing.T) {
 	if called {
 		t.Fatal("root help contacted an app runner")
 	}
-	if text := output.String(); !strings.Contains(text, "apple-music") || !strings.Contains(text, "clock") || !strings.Contains(text, "tokens") || !strings.Contains(text, "muni") || !strings.Contains(text, "--host") {
+	if text := output.String(); !strings.Contains(text, "music") || !strings.Contains(text, "clock") || !strings.Contains(text, "tokens") || !strings.Contains(text, "muni") || !strings.Contains(text, "--host") {
 		t.Fatalf("root help is incomplete:\n%s", text)
 	}
 }
@@ -143,7 +143,7 @@ func TestAppleMusicDefaultsReachRunner(t *testing.T) {
 		captured = config
 		return nil
 	})
-	command.SetArgs([]string{"apple-music"})
+	command.SetArgs([]string{"music"})
 	if err := command.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestAppleMusicFlagsAndEnvironmentReachRunner(t *testing.T) {
 		return nil
 	})
 	command.SetArgs([]string{
-		"apple-music",
+		"music",
 		"--host", "192.0.2.25",
 		"--token", "from-flag",
 		"--priority", "42",
@@ -207,7 +207,7 @@ func TestAppleMusicEnvironmentDefaultsStaySecret(t *testing.T) {
 	help := NewRootCommand(nil)
 	help.SetOut(&output)
 	help.SetErr(&output)
-	help.SetArgs([]string{"apple-music", "--help"})
+	help.SetArgs([]string{"music", "--help"})
 	if err := help.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -218,8 +218,8 @@ func TestAppleMusicEnvironmentDefaultsStaySecret(t *testing.T) {
 
 func TestInvalidAppleMusicInputNeverRuns(t *testing.T) {
 	for name, args := range map[string][]string{
-		"view":        {"apple-music", "--view", "both"},
-		"positionals": {"apple-music", "unexpected"},
+		"view":        {"music", "--view", "both"},
+		"positionals": {"music", "unexpected"},
 		"unknown":     {"not-an-app"},
 	} {
 		t.Run(name, func(t *testing.T) {

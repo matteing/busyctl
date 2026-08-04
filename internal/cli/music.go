@@ -8,11 +8,11 @@ import (
 func newAppleMusicCommand(device *deviceFlags, defaults applemusic.Config, run AppleMusicRunner) *cobra.Command {
 	config := defaults
 	command := &cobra.Command{
-		Use:     "apple-music",
-		Aliases: []string{"applemusic", "music"},
+		Use:     "music",
+		Aliases: []string{"apple-music", "applemusic"},
 		Short:   "Show Apple Music now-playing on the BUSY Bar",
 		Args:    cobra.NoArgs,
-		Example: "  busyctl apple-music\n  busyctl apple-music --view visualizer",
+		Example: "  busyctl music\n  busyctl music --view visualizer",
 		RunE: func(command *cobra.Command, _ []string) error {
 			config.Host = device.host
 			config.Token = device.token

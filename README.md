@@ -5,7 +5,7 @@
 Bundled apps include Apple Music now-playing, a full-screen clock, live Codex token activity, and live Muni arrivals:
 
 ```sh
-busyctl apple-music
+busyctl music
 busyctl clock
 busyctl tokens
 busyctl muni
@@ -34,7 +34,7 @@ go install github.com/matteing/busyctl/cmd/busyctl@latest
 USB uses `10.0.4.20` by default:
 
 ```sh
-busyctl apple-music
+busyctl music
 ```
 
 ![Apple Music titles view on the BUSY Bar](docs/screenshots/apple-music-titles.png)
@@ -42,7 +42,7 @@ busyctl apple-music
 Start directly in visualizer view:
 
 ```sh
-busyctl apple-music --view visualizer
+busyctl music --view visualizer
 ```
 
 ![Apple Music visualizer view on the BUSY Bar](docs/screenshots/apple-music-visualizer.png)
@@ -50,12 +50,12 @@ busyctl apple-music --view visualizer
 For Wi-Fi:
 
 ```sh
-busyctl --host 192.168.1.50 --token 1234 apple-music
+busyctl --host 192.168.1.50 --token 1234 music
 ```
 
 The process polls `https://matteing.com/api/now-playing` every ten seconds. Use `--source` to override that endpoint. `BUSYBAR_HOST` and `BUSYBAR_TOKEN` provide equivalent environment configuration.
 
-Press Ctrl+C to stop. Use `--keep-display` to retain the final frame. Run `busyctl --help` or `busyctl apple-music --help` for every option.
+Press Ctrl+C to stop. Use `--keep-display` to retain the final frame. Run `busyctl --help` or `busyctl music --help` for every option.
 
 ### Display design
 
