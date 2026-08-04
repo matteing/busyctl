@@ -35,9 +35,7 @@ const (
 	// places the final illuminated pixel on column 71 of the 72-pixel display.
 	etaRightAnchor = 73
 	LocationAuto   = "auto"
-	LocationBoth   = "both"
 	LocationOpenAI = "openai"
-	LocationHoward = "howard"
 )
 
 type place struct {
@@ -56,11 +54,6 @@ var places = map[string]place{
 		line: "T", label: "OpenAI", station: "UCSF / Chase Center (16th St)", latitude: 37.7694, longitude: -122.3875,
 		stopCodes:  []string{"17357", "17360"},
 		badgeColor: color.NRGBA{R: 0xbf, G: 0x2b, B: 0x45, A: 0xff}, textColor: "#8FE3C7FF",
-	},
-	LocationHoward: {
-		line: "N", label: "Howard", station: "The Embarcadero & Folsom St", latitude: 37.7914, longitude: -122.3910,
-		stopCodes:  []string{"14509", "14510"},
-		badgeColor: color.NRGBA{R: 0x00, G: 0x5b, B: 0x95, A: 0xff}, textColor: "#8FE3C7FF",
 	},
 }
 
@@ -90,7 +83,7 @@ func DefaultConfig() Config {
 		Host: envOr("BUSYBAR_HOST", "10.0.4.20"), Token: envOr("BUSYBAR_TOKEN", ""),
 		Source: defaultSource, Locator: envOr("MUNI_LOCATION_URL", defaultLocator),
 		APIKey: envOr("SFMTA_API_KEY", defaultAPIKey), Priority: 100,
-		Location:             envOr("MUNI_LOCATION", LocationBoth),
+		Location:             envOr("MUNI_LOCATION", LocationOpenAI),
 		AllowNetworkLocation: envBool("MUNI_ALLOW_NETWORK_LOCATION"),
 	}
 }
@@ -408,7 +401,7 @@ func resolvePlaces(ctx context.Context, config Config, source sourceClient) ([]p
 	if location == LocationAuto {
 		latitude, longitude, err := locate(ctx, config.Locator)
 		if err != nil {
-			return nil, fmt.Errorf("auto-detect location: %w; pass --location LAT,LON to keep coordinates runtime-only", err)
+			return nil, fmt.Errorf("auto-detect location: %w", err)
 		}
 		return source.nearestMetro(ctx, latitude, longitude)
 	}
@@ -516,22 +509,14 @@ func (s sourceClient) nearestMetro(ctx context.Context, latitude, longitude floa
 func selectedPlaces(location string) ([]place, error) {
 	location = strings.ToLower(strings.TrimSpace(location))
 	switch location {
-	case "", LocationBoth:
-		return []place{places[LocationHoward], places[LocationOpenAI]}, nil
-	case LocationOpenAI, "office":
+	case "", LocationOpenAI, "office":
 		return []place{places[LocationOpenAI]}, nil
-	case LocationHoward, "88-howard", "88howard":
-		return []place{places[LocationHoward]}, nil
 	}
-	latitude, longitude, ok := parseCoordinates(location)
+	_, _, ok := parseCoordinates(location)
 	if !ok {
-		return nil, fmt.Errorf("unknown location %q: use both, openai, howard, or LAT,LON", location)
+		return nil, fmt.Errorf("unknown location %q: use openai or LAT,LON", location)
 	}
-	nearest := places[LocationOpenAI]
-	if coordinateDistanceSquared(latitude, longitude, places[LocationHoward].latitude, places[LocationHoward].longitude) < coordinateDistanceSquared(latitude, longitude, nearest.latitude, nearest.longitude) {
-		nearest = places[LocationHoward]
-	}
-	return []place{nearest}, nil
+	return []place{places[LocationOpenAI]}, nil
 }
 
 func parseCoordinates(value string) (float64, float64, bool) {

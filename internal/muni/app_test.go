@@ -3,6 +3,7 @@ package muni
 import (
 	"context"
 	"encoding/json"
+	"image/color"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
@@ -27,12 +28,17 @@ func (fake *fakeBar) Draw(_ context.Context, drawing barapi.Drawing) error {
 func TestDefaultConfigDoesNotTransmitLocation(t *testing.T) {
 	t.Setenv("MUNI_LOCATION", "")
 	config := DefaultConfig()
-	if config.Location != LocationBoth {
-		t.Fatalf("default location = %q, want both", config.Location)
+	if config.Location != LocationOpenAI {
+		t.Fatalf("default location = %q, want openai", config.Location)
 	}
 	if err := config.Validate(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+var testNPlace = place{
+	line: "N", label: "Test", station: "Test",
+	badgeColor: color.NRGBA{R: 0x00, G: 0x5b, B: 0x95, A: 0xff}, textColor: "#8FE3C7FF",
 }
 
 func TestAutoLocationRequiresExplicitNetworkOptIn(t *testing.T) {
@@ -117,7 +123,7 @@ func TestTwoRowFrameUsesSharedColumnsAndIndependentPulse(t *testing.T) {
 	device := &fakeBar{}
 	app := application{
 		bar: device, priority: 42,
-		selected: []place{places[LocationHoward], places[LocationOpenAI]},
+		selected: []place{testNPlace, places[LocationOpenAI]},
 		latest: map[string][]arrival{
 			"N": {{Minutes: 3, Destination: "Ocean Beach"}},
 			"T": {{Minutes: 8, Destination: "Chinatown"}},
@@ -163,13 +169,13 @@ func TestMissingPredictionsShowStationAndSleepingETA(t *testing.T) {
 	app := application{
 		bar:      device,
 		priority: 42,
-		selected: []place{places[LocationHoward], places[LocationOpenAI]},
+		selected: []place{testNPlace, places[LocationOpenAI]},
 		latest:   map[string][]arrival{},
 	}
 	app.render(context.Background(), 100)
 
 	drawing := device.drawings[0]
-	if drawing.Elements[1].Text != "Folsom" || drawing.Elements[2].Text != "Zzz" {
+	if drawing.Elements[1].Text != "Test" || drawing.Elements[2].Text != "Zzz" {
 		t.Fatalf("N fallback = %q %q", drawing.Elements[1].Text, drawing.Elements[2].Text)
 	}
 	if drawing.Elements[4].Text != "UCSF" || drawing.Elements[5].Text != "Zzz" {
@@ -192,7 +198,7 @@ func TestEveryETAStateUsesVisiblePixelRightAnchor(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			device := &fakeBar{}
 			app := application{
-				bar: device, selected: []place{places[LocationHoward]},
+				bar: device, selected: []place{testNPlace},
 				latest: map[string][]arrival{"N": test.values},
 			}
 			app.render(context.Background(), 100)

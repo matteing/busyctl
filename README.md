@@ -119,13 +119,13 @@ busyctl muni
 
 ![Muni arrivals on the BUSY Bar](docs/screenshots/muni.png)
 
-By default, `muni` shows two aligned rows at once: N Judah at Embarcadero & Folsom and T Third at UCSF/Chase Center. No home address or coordinates are stored in the repository or written to disk. Pass precise coordinates at runtime to select the nearest J, K, L, M, N, or T platform:
+By default, `muni` shows T Third arrivals at UCSF/Chase Center. Select the nearest J, K, L, M, N, or T platform with a location supplied at runtime:
 
 ```sh
-busyctl muni --location 37.7694,-122.3875
+busyctl muni --location LAT,LON
 ```
 
-`busyctl muni openai` and `busyctl muni howard` select either preset directly. `MUNI_LOCATION` provides the same private runtime override, and `--location-source` can point to a private service returning `{"latitude": ..., "longitude": ...}`.
+`busyctl muni openai` selects the public preset directly. `MUNI_LOCATION` provides the same runtime override, and `--location-source` can point to a service returning `{"latitude": ..., "longitude": ...}`.
 
 Optional auto mode uses the free `ipwho.is` network-location estimate. Because that sends your public IP address to the provider, it requires explicit opt-in and never runs silently:
 
