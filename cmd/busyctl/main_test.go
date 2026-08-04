@@ -15,6 +15,9 @@ func TestAppsCommand(t *testing.T) {
 	if !strings.Contains(output.String(), "apple-music") {
 		t.Fatalf("apps output = %q", output.String())
 	}
+	if !strings.Contains(output.String(), "hacker-news") {
+		t.Fatalf("apps output = %q", output.String())
+	}
 }
 
 func TestVersionCommand(t *testing.T) {

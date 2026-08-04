@@ -14,10 +14,12 @@ import (
 	"syscall"
 
 	"github.com/matteing/busybar-apps/internal/apps/applemusic"
+	"github.com/matteing/busybar-apps/internal/apps/hackernews"
 	barapi "github.com/matteing/busybar-apps/internal/busybar"
 )
 
-const version = "0.2.0"
+// version is replaced from the release tag by the GitHub Actions build.
+var version = "dev"
 
 type appCommand struct {
 	name        string
@@ -32,6 +34,12 @@ var commands = []appCommand{
 		application: applemusic.ApplicationID,
 		description: "Show Apple Music album art and now-playing details",
 		run:         applemusic.Run,
+	},
+	{
+		name:        "hacker-news",
+		application: hackernews.ApplicationID,
+		description: "Show three live Hacker News headlines with an animated HN glow",
+		run:         hackernews.Run,
 	},
 }
 
@@ -165,6 +173,7 @@ Device flags:
 Examples:
   busyctl apple-music
   busyctl apple-music --poll 10s
+  busyctl hacker-news
   busyctl status
   busyctl clear apple-music
   busyctl clear --host 192.168.1.50 apple-music

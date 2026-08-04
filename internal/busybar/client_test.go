@@ -88,3 +88,26 @@ func TestClearAllOmitsApplicationQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDecodeInputEventsExtractsSignedEncoderDelta(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		encoded byte
+		want    int
+	}{
+		{name: "clockwise", encoded: 2, want: 1},
+		{name: "counterclockwise", encoded: 1, want: -1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			encoder := []byte{0x08, test.encoded}
+			input := append([]byte{0x1a, byte(len(encoder))}, encoder...)
+			update := append([]byte{0x5a, byte(len(input))}, input...)
+			state := append([]byte{0x12, byte(len(update))}, update...)
+			events := DecodeInputEvents(state)
+			if len(events) != 1 || events[0].EncoderDelta != test.want {
+				t.Fatalf("events = %#v, want delta %d", events, test.want)
+			}
+		})
+	}
+}

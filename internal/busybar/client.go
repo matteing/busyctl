@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 const apiVersionHeader = "X-Busy-Api-Version"
@@ -25,6 +27,10 @@ type VersionInfo struct {
 	APISemver string `json:"api_semver"`
 }
 
+type InputEvent struct {
+	EncoderDelta int
+}
+
 type Element struct {
 	ID                string `json:"id"`
 	Type              string `json:"type"`
@@ -35,10 +41,13 @@ type Element struct {
 	Color             string `json:"color,omitempty"`
 	Path              string `json:"path,omitempty"`
 	Display           string `json:"display"`
-	Opacity           int    `json:"opacity,omitempty"`
+	Opacity           *int   `json:"opacity,omitempty"`
+	Loop              bool   `json:"loop,omitempty"`
+	AwaitPreviousEnd  bool   `json:"await_previous_end,omitempty"`
+	Section           string `json:"section,omitempty"`
 	Timeout           int    `json:"timeout,omitempty"`
 	Width             int    `json:"width,omitempty"`
-	ScrollRate        int    `json:"scroll_rate,omitempty"`
+	ScrollRate        *int   `json:"scroll_rate,omitempty"`
 	ScrollStartDelay  int    `json:"scroll_start_delay,omitempty"`
 	ScrollRepeatDelay int    `json:"scroll_repeat_delay,omitempty"`
 }
@@ -59,6 +68,9 @@ func New(host, token string) *Client {
 		token:   strings.TrimSpace(token),
 		http: &http.Client{
 			Timeout: 15 * time.Second,
+			Transport: &http.Transport{
+				DisableKeepAlives: true,
+			},
 		},
 	}
 }
@@ -89,6 +101,15 @@ func (c *Client) UploadAsset(ctx context.Context, applicationName, filename stri
 	return c.send(req, nil)
 }
 
+func (c *Client) DeleteAssets(ctx context.Context, applicationName string) error {
+	path := "/api/assets/upload?" + url.Values{"application_name": {applicationName}}.Encode()
+	req, err := c.request(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return err
+	}
+	return c.send(req, nil)
+}
+
 func (c *Client) Draw(ctx context.Context, drawing DisplayElements) error {
 	return c.doJSON(ctx, http.MethodPost, "/api/display/draw", drawing, nil)
 }
@@ -108,6 +129,156 @@ func (c *Client) ClearAll(ctx context.Context) error {
 		return err
 	}
 	return c.send(req, nil)
+}
+
+// StreamInputs receives physical BUSY Bar input events until the context is
+// canceled or the WebSocket connection closes.
+func (c *Client) StreamInputs(ctx context.Context, onInput func(InputEvent)) error {
+	endpoint, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("parse BUSY Bar address: %w", err)
+	}
+	if endpoint.Scheme == "https" {
+		endpoint.Scheme = "wss"
+	} else {
+		endpoint.Scheme = "ws"
+	}
+	endpoint.Path = "/api/status/ws"
+	query := endpoint.Query()
+	if c.token != "" {
+		query.Set("x-api-token", c.token)
+	}
+	endpoint.RawQuery = query.Encode()
+
+	connection, _, err := websocket.Dial(ctx, endpoint.String(), nil)
+	if err != nil {
+		return fmt.Errorf("connect BUSY Bar input stream: %w", err)
+	}
+	defer connection.CloseNow()
+	if err := connection.Write(ctx, websocket.MessageText, []byte(`{"enable":true}`)); err != nil {
+		return fmt.Errorf("enable BUSY Bar input stream: %w", err)
+	}
+	for {
+		messageType, payload, err := connection.Read(ctx)
+		if err != nil {
+			return fmt.Errorf("read BUSY Bar input stream: %w", err)
+		}
+		if messageType != websocket.MessageBinary {
+			continue
+		}
+		for _, event := range DecodeInputEvents(payload) {
+			onInput(event)
+		}
+	}
+}
+
+// DecodeInputEvents extracts encoder deltas from BSB_State.State protobuf
+// frames. The decoder intentionally understands only the tiny input subset we
+// consume and safely skips every other protobuf field.
+func DecodeInputEvents(payload []byte) []InputEvent {
+	var events []InputEvent
+	for len(payload) > 0 {
+		field, wire, value, rest, ok := nextProtoField(payload)
+		if !ok {
+			break
+		}
+		payload = rest
+		if field != 2 || wire != 2 {
+			continue
+		}
+		for len(value) > 0 {
+			updateField, updateWire, input, updateRest, valid := nextProtoField(value)
+			if !valid {
+				break
+			}
+			value = updateRest
+			if updateField != 11 || updateWire != 2 {
+				continue
+			}
+			for len(input) > 0 {
+				inputField, inputWire, encoder, inputRest, valid := nextProtoField(input)
+				if !valid {
+					break
+				}
+				input = inputRest
+				if inputField != 3 || inputWire != 2 {
+					continue
+				}
+				if delta, found := decodeEncoderDelta(encoder); found {
+					events = append(events, InputEvent{EncoderDelta: delta})
+				}
+			}
+		}
+	}
+	return events
+}
+
+func decodeEncoderDelta(payload []byte) (int, bool) {
+	for len(payload) > 0 {
+		field, wire, value, rest, ok := nextProtoField(payload)
+		if !ok {
+			return 0, false
+		}
+		payload = rest
+		if field == 1 && wire == 0 {
+			encoded, _, ok := consumeVarint(value)
+			if !ok {
+				return 0, false
+			}
+			return int(encoded>>1) ^ -int(encoded&1), true
+		}
+	}
+	return 0, false
+}
+
+func nextProtoField(payload []byte) (field int, wire int, value, rest []byte, ok bool) {
+	key, keyBytes, ok := consumeVarint(payload)
+	if !ok {
+		return 0, 0, nil, nil, false
+	}
+	field, wire = int(key>>3), int(key&7)
+	payload = payload[keyBytes:]
+	switch wire {
+	case 0:
+		_, size, valid := consumeVarint(payload)
+		if !valid {
+			return 0, 0, nil, nil, false
+		}
+		return field, wire, payload[:size], payload[size:], true
+	case 1:
+		if len(payload) < 8 {
+			return 0, 0, nil, nil, false
+		}
+		return field, wire, payload[:8], payload[8:], true
+	case 2:
+		length, size, valid := consumeVarint(payload)
+		if !valid || length > uint64(len(payload)-size) {
+			return 0, 0, nil, nil, false
+		}
+		start, end := size, size+int(length)
+		return field, wire, payload[start:end], payload[end:], true
+	case 5:
+		if len(payload) < 4 {
+			return 0, 0, nil, nil, false
+		}
+		return field, wire, payload[:4], payload[4:], true
+	default:
+		return 0, 0, nil, nil, false
+	}
+}
+
+func consumeVarint(payload []byte) (uint64, int, bool) {
+	var value uint64
+	for index, current := range payload {
+		if index >= 10 {
+			return 0, 0, false
+		}
+		value |= uint64(current&0x7f) << (7 * index)
+		if current < 0x80 {
+			return value, index + 1, true
+		}
+	}
+	return 0, 0, false
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, body, result any) error {
@@ -140,6 +311,7 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 	if c.apiVersion != "" {
 		req.Header.Set(apiVersionHeader, c.apiVersion)
 	}
+	req.Close = true
 	return req, nil
 }
 
