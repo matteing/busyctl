@@ -37,11 +37,15 @@ USB uses `10.0.4.20` by default:
 busyctl apple-music
 ```
 
+![Apple Music titles view on the BUSY Bar](docs/screenshots/apple-music-titles.png)
+
 Start directly in visualizer view:
 
 ```sh
 busyctl apple-music --view visualizer
 ```
+
+![Apple Music visualizer view on the BUSY Bar](docs/screenshots/apple-music-visualizer.png)
 
 For Wi-Fi:
 
@@ -53,6 +57,14 @@ The process polls `https://matteing.com/api/now-playing` every ten seconds. Use 
 
 Press Ctrl+C to stop. Use `--keep-display` to retain the final frame. Run `busyctl --help` or `busyctl apple-music --help` for every option.
 
+### Display design
+
+- The composition has a true one-pixel outer margin. The 14×14 album cover uses a lightly rounded, antialiased squircle mask and stays static at the left.
+- Titles use the bundled BUSY Bar font. Only one row scrolls at a time: song for six seconds, pause for three, artist for six, pause for three.
+- The visualizer is a seamless 15 FPS spectrum built from narrow musical transients, a changing connected energy bed, and a vivid perceptual gradient extracted from the album artwork.
+- The waveform fades smoothly into the display at its edges. Each tick updates one fixed image element; the cover is not resent.
+- When playback pauses, timers stop and the current view freezes in grayscale. Playback resumes in that same view.
+
 ## Clock
 
 The face is based on [Max Swinkels' community clock](https://maxswinkels.github.io/busybar-apps/apps/clock/). By default it shows 12-hour local time with AM/PM and no seconds, while the colon smoothly fades through one cycle each second.
@@ -60,6 +72,8 @@ The face is based on [Max Swinkels' community clock](https://maxswinkels.github.
 ```sh
 busyctl clock
 ```
+
+![Clock app on the BUSY Bar](docs/screenshots/clock.png)
 
 Enable seconds or switch back to the original 24-hour layout:
 
@@ -83,6 +97,8 @@ The clock aligns updates to the next minute, second, or half-second boundary and
 busyctl tokens
 ```
 
+![Codex token activity graph on the BUSY Bar](docs/screenshots/tokens-graph.png)
+
 The display shows a high-contrast GitHub-style 27-week daily activity grid with the all-time local token total tucked against the right edge in the BUSY Bar's native font. It reads the running user's Codex state database (`~/.codex/state_5.sqlite`) in read-only mode and samples five times per second; it does not read or transmit Codex credentials. Override discovery with `CODEX_STATE_DB` or `--database`, and adjust the refresh interval with `--poll`.
 
 For a focused live view, show the exact all-time total centered over a scrolling 14-second token-rate sparkline. The background uses a filled purple-to-cyan gradient and smooth square-root-scaled activity pulses, while a lightweight total-only query samples every 200 milliseconds:
@@ -91,6 +107,8 @@ For a focused live view, show the exact all-time total centered over a scrolling
 busyctl tokens --view count
 ```
 
+![Codex live token count on the BUSY Bar](docs/screenshots/tokens-count.png)
+
 Token totals are grouped by the day each local Codex task was created, matching the available local task accounting. A task that remains active across midnight stays attributed to its creation day.
 
 ## Muni
@@ -98,6 +116,8 @@ Token totals are grouped by the day each local Codex task was created, matching 
 ```sh
 busyctl muni
 ```
+
+![Muni arrivals on the BUSY Bar](docs/screenshots/muni.png)
 
 By default, `muni` shows two aligned rows at once: N Judah at Embarcadero & Folsom and T Third at UCSF/Chase Center. No home address or coordinates are stored in the repository or written to disk. Pass precise coordinates at runtime to select the nearest J, K, L, M, N, or T platform:
 
@@ -114,14 +134,6 @@ busyctl muni auto --allow-network-location
 ```
 
 The display follows the reference sign style: compact 7×7 route markers share one left column, destinations use soft mint text, and both ETAs lock to the same right edge. A row with a train three or four minutes away fades smoothly between 55% and 100% brightness without affecting the other row. Predictions refresh every 15 seconds from the free UmoIQ endpoint used by SFMTA's public stop pages; no signup is required.
-
-### Display design
-
-- The composition has a true one-pixel outer margin. The 14×14 album cover uses a lightly rounded, antialiased squircle mask and stays static at the left.
-- Titles use the bundled BUSY Bar font. Only one row scrolls at a time: song for six seconds, pause for three, artist for six, pause for three.
-- The visualizer is a seamless 15 FPS spectrum built from narrow musical transients, a changing connected energy bed, and a vivid perceptual gradient extracted from the album artwork.
-- The waveform fades smoothly into the display at its edges. Each tick updates one fixed image element; the cover is not resent.
-- When playback pauses, timers stop and the current view freezes in grayscale. Playback resumes in that same view.
 
 ## Build from source
 
