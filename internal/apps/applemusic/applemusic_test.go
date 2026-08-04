@@ -2,6 +2,7 @@ package applemusic
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -210,8 +211,8 @@ func TestMultiStepDialDeltaStillSwitchesOnce(t *testing.T) {
 
 func TestRecentCarouselDuration(t *testing.T) {
 	t.Parallel()
-	app := application{options: options{recentSpeed: 50 * time.Millisecond}}
-	if got := app.phaseDuration(); got != animationFrameTime {
+	app := application{options: options{recentSpeed: 100 * time.Millisecond}}
+	if got := app.phaseDuration(); got != recentFrameTime {
 		t.Fatalf("recent duration = %s", got)
 	}
 }
@@ -224,7 +225,7 @@ func TestRecentCarouselWrapsWithoutAResetFrame(t *testing.T) {
 		{ID: "2", Name: "Two", CoverURL: "https://example.test/2.jpg"},
 	}
 	app := application{
-		options:          options{priority: 100, recentSpeed: animationFrameTime},
+		options:          options{priority: 100, recentSpeed: recentFrameTime},
 		bar:              bar,
 		recent:           recent,
 		recentArt:        recentFingerprint(recent),
@@ -246,18 +247,23 @@ func TestRecentCarouselWrapsWithoutAResetFrame(t *testing.T) {
 		t.Fatalf("draw count = %d", len(bar.drawings))
 	}
 	for _, drawing := range bar.drawings {
-		if len(drawing.Elements) != 2 {
+		if len(drawing.Elements) != 3 {
 			t.Fatalf("carousel element count = %d", len(drawing.Elements))
+		}
+		for index, element := range drawing.Elements {
+			if element.ID != fmt.Sprintf("recent_slot_%d", index) {
+				t.Fatalf("carousel slot %d ID = %q", index, element.ID)
+			}
 		}
 	}
 }
 
-func TestRecentCarouselInterpolatesAtSixtyFPS(t *testing.T) {
+func TestRecentCarouselInterpolatesAtFifteenFPS(t *testing.T) {
 	t.Parallel()
 	bar := &fakeBar{}
 	recent := []Track{{ID: "1", Name: "One", CoverURL: "https://example.test/1.jpg"}}
 	app := application{
-		options:          options{priority: 100, recentSpeed: 50 * time.Millisecond},
+		options:          options{priority: 100, recentSpeed: 100 * time.Millisecond},
 		bar:              bar,
 		recent:           recent,
 		recentArt:        recentFingerprint(recent),
@@ -272,7 +278,7 @@ func TestRecentCarouselInterpolatesAtSixtyFPS(t *testing.T) {
 		t.Fatal(err)
 	}
 	elements := bar.drawings[0].Elements
-	if len(elements) != 2 || elements[0].Path == "recent-strip-00-00.png" {
+	if len(elements) != 3 || elements[0].Path == "recent-strip-00-00.png" {
 		t.Fatalf("subpixel strip elements = %#v", elements)
 	}
 }

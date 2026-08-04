@@ -83,7 +83,7 @@ Environment variables `BUSYBAR_HOST` and `BUSYBAR_TOKEN` are also supported.
 
 The Apple Music app polls `https://matteing.com/api/now-playing` every 10 seconds, crops the current album artwork, and displays it with the firmware's compact bundled fonts. Long song and artist names use the BUSY Bar's native high-speed scrolling animation.
 
-When playback is stopped or paused, the display becomes a seamless 60 FPS row of up to eight recently played album covers. The covers are precomposed into one cyclic strip with baked subpixel frames, so the row updates atomically without individual covers trailing behind. Tune its travel time per pixel with `--recent-speed` (the default is `40ms`, or 25 pixels per second; lower is faster).
+When playback is stopped or paused, the display becomes a seamless 15 FPS row of up to eight recently played album covers. The covers are precomposed into one cyclic strip with baked subpixel frames and rendered through three stable tile slots, preventing stale wrap fragments. Tune its travel time per pixel with `--recent-speed` (the default is `100ms`, or 10 pixels per second; lower is faster).
 
 Useful options:
 

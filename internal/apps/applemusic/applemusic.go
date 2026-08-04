@@ -35,7 +35,7 @@ const (
 	recentGap          = 2
 	maxRecent          = 8
 	recentSubframes    = 12
-	animationFrameTime = time.Second / 60
+	recentFrameTime    = time.Second / 15
 	waveformFrameTime  = time.Second / media.WaveformFramesPerSecond
 )
 
@@ -157,7 +157,7 @@ func parseOptions(args []string) (options, error) {
 	flags.IntVar(&opts.scrollRate, "scroll-rate", 1500, "text scroll speed in pixels per minute")
 	flags.DurationVar(&opts.scrollTime, "scroll-time", 6*time.Second, "time allotted to each scrolling row")
 	flags.DurationVar(&opts.scrollRest, "scroll-rest", 3*time.Second, "still time between scrolling rows")
-	flags.DurationVar(&opts.recentSpeed, "recent-speed", 40*time.Millisecond, "time per pixel of recent-cover travel (lower is faster)")
+	flags.DurationVar(&opts.recentSpeed, "recent-speed", 100*time.Millisecond, "time per pixel of recent-cover travel (lower is faster)")
 	flags.IntVar(&opts.priority, "priority", 100, "BUSY Bar drawing priority")
 	flags.BoolVar(&opts.demo, "demo", false, "show the most recent album when nothing is playing")
 	flags.BoolVar(&opts.once, "once", false, "fetch and draw once, then exit")
@@ -276,7 +276,7 @@ func (a *application) run(ctx context.Context) error {
 			if a.track == nil {
 				elapsed := frameStarted.Sub(a.animationAt)
 				if elapsed <= 0 {
-					elapsed = animationFrameTime
+					elapsed = recentFrameTime
 				}
 				a.advanceRecentBy(elapsed)
 			} else {
@@ -569,13 +569,27 @@ func (a *application) renderRecent(ctx context.Context) error {
 				x := viewPadding + cycle*a.recentStripWidth + tileStart - baseOffset
 				if x < displayWidth && x+tileWidth > 0 {
 					elements = append(elements, barapi.Element{
-						ID: fmt.Sprintf("recent_%d_%d", cycle, tileIndex), Type: "image",
-						X: x, Y: 1, Path: fmt.Sprintf("recent-strip-%02d-%02d.png", phase, tileIndex),
+						Type: "image",
+						X:    x, Y: 1, Path: fmt.Sprintf("recent-strip-%02d-%02d.png", phase, tileIndex),
 						Display: "front", Opacity: intPointer(100),
 					})
 				}
 				tileStart += tileWidth
 			}
+		}
+		if len(elements) > 3 {
+			return fmt.Errorf("recent carousel needs %d visible tiles; expected at most 3", len(elements))
+		}
+		for index := range elements {
+			elements[index].ID = fmt.Sprintf("recent_slot_%d", index)
+		}
+		for len(elements) < 3 {
+			index := len(elements)
+			elements = append(elements, barapi.Element{
+				ID: fmt.Sprintf("recent_slot_%d", index), Type: "image",
+				X: displayWidth + 10, Y: 1, Path: fmt.Sprintf("recent-strip-%02d-00.png", phase),
+				Display: "front", Opacity: intPointer(100),
+			})
 		}
 	}
 
@@ -593,7 +607,7 @@ func (a *application) renderRecent(ctx context.Context) error {
 
 func (a *application) phaseDuration() time.Duration {
 	if a.track == nil {
-		return animationFrameTime
+		return recentFrameTime
 	}
 	if a.phase == phaseTitle || a.phase == phaseArtist {
 		return a.options.scrollTime
@@ -663,7 +677,7 @@ func shouldScroll(text string, width int) bool {
 }
 
 func (a *application) advanceRecent() {
-	a.advanceRecentBy(animationFrameTime)
+	a.advanceRecentBy(recentFrameTime)
 }
 
 func (a *application) advanceRecentBy(elapsed time.Duration) {
