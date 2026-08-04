@@ -105,6 +105,34 @@ func TestGrayscalePNGPreservesAlpha(t *testing.T) {
 	}
 }
 
+func TestSquircleMaskRoundsCornersWithoutShrinkingArtwork(t *testing.T) {
+	t.Parallel()
+
+	artwork := image.NewNRGBA(image.Rect(0, 0, 14, 14))
+	for y := range 14 {
+		for x := range 14 {
+			artwork.SetNRGBA(x, y, color.NRGBA{R: 220, G: 40, B: 150, A: 255})
+		}
+	}
+	applySquircleMask(artwork)
+
+	if alpha := artwork.NRGBAAt(0, 0).A; alpha != 0 {
+		t.Fatalf("corner alpha = %d, want transparent", alpha)
+	}
+	transition := artwork.NRGBAAt(1, 0).A
+	if transition == 0 || transition == 255 {
+		t.Fatalf("antialiased corner transition alpha = %d, want partial", transition)
+	}
+	for _, point := range []image.Point{{X: 7, Y: 0}, {X: 0, Y: 7}, {X: 7, Y: 7}, {X: 13, Y: 7}, {X: 7, Y: 13}} {
+		if alpha := artwork.NRGBAAt(point.X, point.Y).A; alpha != 255 {
+			t.Fatalf("artwork at %v alpha = %d, want opaque", point, alpha)
+		}
+	}
+	if opposite := artwork.NRGBAAt(12, 0).A; opposite != transition {
+		t.Fatalf("squircle is asymmetric: left alpha %d, right alpha %d", transition, opposite)
+	}
+}
+
 func TestExtractPalettePrefersARealAccentOverBlackBackground(t *testing.T) {
 	t.Parallel()
 

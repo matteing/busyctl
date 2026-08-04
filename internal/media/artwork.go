@@ -75,6 +75,7 @@ func PrepareArtwork(rawURL string, size int) (Artwork, error) {
 	}
 
 	colorImage := cropAndScale(source, size)
+	applySquircleMask(colorImage)
 	colorPNG, err := encodePNG(colorImage)
 	if err != nil {
 		return Artwork{}, fmt.Errorf("encode artwork PNG: %w", err)
@@ -148,6 +149,49 @@ func cropAndScale(source image.Image, size int) *image.NRGBA {
 		}
 	}
 	return destination
+}
+
+// applySquircleMask rounds the tiny album cover with a fifth-order
+// superellipse. Supersampling gives the handful of boundary pixels partial
+// alpha, which looks smoother on the physical LEDs than a staircase cutout.
+func applySquircleMask(destination *image.NRGBA) {
+	if destination == nil || destination.Bounds().Empty() {
+		return
+	}
+	bounds := destination.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			coverage := squircleCoverage(x-bounds.Min.X, y-bounds.Min.Y, bounds.Dx(), bounds.Dy())
+			if coverage >= 1 {
+				continue
+			}
+			pixel := destination.NRGBAAt(x, y)
+			pixel.A = uint8(math.Round(float64(pixel.A) * coverage))
+			destination.SetNRGBA(x, y, pixel)
+		}
+	}
+}
+
+func squircleCoverage(x, y, width, height int) float64 {
+	if width <= 0 || height <= 0 {
+		return 0
+	}
+	const samples = 4
+	centerX, centerY := float64(width)/2, float64(height)/2
+	radiusX, radiusY := float64(width)/2, float64(height)/2
+	inside := 0
+	for sampleY := range samples {
+		for sampleX := range samples {
+			pointX := float64(x) + (float64(sampleX)+0.5)/samples
+			pointY := float64(y) + (float64(sampleY)+0.5)/samples
+			normalizedX := math.Abs((pointX - centerX) / radiusX)
+			normalizedY := math.Abs((pointY - centerY) / radiusY)
+			if math.Pow(normalizedX, 5)+math.Pow(normalizedY, 5) <= 1 {
+				inside++
+			}
+		}
+	}
+	return float64(inside) / (samples * samples)
 }
 
 func encodePNG(source image.Image) ([]byte, error) {

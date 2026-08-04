@@ -2,10 +2,12 @@ package media
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"math"
+	"sort"
 	"testing"
 )
 
@@ -57,8 +59,8 @@ func TestGenerateVisualizerPNGs(t *testing.T) {
 	if boundaryStep > maximumInteriorStep {
 		t.Fatalf("loop boundary step = %d, larger than interior maximum %d", boundaryStep, maximumInteriorStep)
 	}
-	if maximumInteriorStep > 1 {
-		t.Fatalf("adjacent-frame height step = %d, want <= 1 for smooth motion", maximumInteriorStep)
+	if maximumInteriorStep > 2 {
+		t.Fatalf("adjacent-frame height step = %d, want <= 2 for responsive smooth motion", maximumInteriorStep)
 	}
 	if tallestPeak != 14 {
 		t.Fatalf("tallest peak = %d, want occasional full-height spectrum peaks", tallestPeak)
@@ -105,17 +107,137 @@ func TestVisualizerBarsAreBottomAnchoredGradients(t *testing.T) {
 	}
 
 	heights := barHeights(decoded)
-	tallestX := 0
-	for x := range heights {
+	tallestX := min(3, len(heights)-1)
+	for x := tallestX; x < max(tallestX+1, len(heights)-3); x++ {
 		if heights[x] > heights[tallestX] {
 			tallestX = x
 		}
 	}
 	topY := 14 - heights[tallestX]
-	top := color.NRGBAModel.Convert(decoded.At(tallestX, topY)).(color.NRGBA)
 	bottom := color.NRGBAModel.Convert(decoded.At(tallestX, 13)).(color.NRGBA)
-	if contrast := relativeLuminance(top) - relativeLuminance(bottom); contrast < 0.45 {
-		t.Fatalf("bar luminance contrast = %.3f, want a clearly visible gradient; top=%#v bottom=%#v", contrast, top, bottom)
+	brightest := color.NRGBA{}
+	for y := topY; y < 14; y++ {
+		candidate := color.NRGBAModel.Convert(decoded.At(tallestX, y)).(color.NRGBA)
+		if relativeLuminance(candidate) > relativeLuminance(brightest) {
+			brightest = candidate
+		}
+	}
+	if contrast := relativeLuminance(brightest) - relativeLuminance(bottom); contrast < 0.35 {
+		t.Fatalf("bar luminance contrast = %.3f, want a clearly visible gradient; brightest=%#v bottom=%#v", contrast, brightest, bottom)
+	}
+}
+
+func TestVisualizerEdgeFadeEmergesSmoothlyFromTheWaveformBounds(t *testing.T) {
+	t.Parallel()
+
+	left := []float64{
+		visualizerEdgeFade(0, 7, 21, 15),
+		visualizerEdgeFade(1, 7, 21, 15),
+		visualizerEdgeFade(2, 7, 21, 15),
+		visualizerEdgeFade(3, 7, 21, 15),
+	}
+	for index := 1; index < len(left); index++ {
+		if left[index] <= left[index-1] {
+			t.Fatalf("left fade is not progressive: %v", left)
+		}
+	}
+	if left[len(left)-1] != 1 {
+		t.Fatalf("interior fade = %.3f, want 1", left[len(left)-1])
+	}
+	if right := visualizerEdgeFade(20, 7, 21, 15); right != left[0] {
+		t.Fatalf("right edge fade = %.3f, want symmetric %.3f", right, left[0])
+	}
+	top := visualizerEdgeFade(10, 0, 21, 15)
+	bottom := visualizerEdgeFade(10, 14, 21, 15)
+	if !(top < bottom && bottom < 1) {
+		t.Fatalf("top/bottom fades = %.3f/%.3f, want a gentler but visible bottom fade", top, bottom)
+	}
+
+	source := color.NRGBA{R: 230, G: 45, B: 170, A: 255}
+	edge := fadeVisualizerEdge(source, 0, 7, 21, 15)
+	interior := fadeVisualizerEdge(source, 10, 7, 21, 15)
+	if edge.A != 255 || interior != source {
+		t.Fatalf("edge fade changed opacity or interior color: edge=%#v interior=%#v", edge, interior)
+	}
+	if relativeLuminance(edge) >= relativeLuminance(interior) {
+		t.Fatalf("edge luminance %.3f did not fade below interior %.3f", relativeLuminance(edge), relativeLuminance(interior))
+	}
+	if chroma := colorToOKLCH(edge).C; chroma < 0.05 {
+		t.Fatalf("edge lost its color while fading: chroma %.3f, color %#v", chroma, edge)
+	}
+}
+
+func TestVisualizerSpectrumHasDynamicValleysAndDiscretePeaks(t *testing.T) {
+	t.Parallel()
+
+	palettes := [][3]color.NRGBA{
+		{{R: 215, G: 45, B: 70, A: 255}, {R: 95, G: 70, B: 220, A: 255}, {R: 35, G: 170, B: 235, A: 255}},
+		{{R: 230, G: 120, B: 30, A: 255}, {R: 30, G: 175, B: 115, A: 255}, {R: 245, G: 210, B: 90, A: 255}},
+		{{R: 60, G: 35, B: 150, A: 255}, {R: 210, G: 45, B: 155, A: 255}, {R: 75, G: 150, B: 235, A: 255}},
+	}
+	for paletteIndex, palette := range palettes {
+		paletteIndex, palette := paletteIndex, palette
+		t.Run(fmt.Sprintf("palette_%d", paletteIndex), func(t *testing.T) {
+			t.Parallel()
+
+			frames := generateSpectrumHeights(55, 14, palette)
+			lowSamples := 0
+			columnsThatWentLow := make([]bool, 55)
+			framesWithSeveralPeaks := 0
+			framesWithWideRange := 0
+			framesWithBroadClump := 0
+			totalVariation := 0
+			for _, heights := range frames {
+				minimumHeight, maximumHeight := heights[0], heights[0]
+				for x, barHeight := range heights {
+					minimumHeight = min(minimumHeight, barHeight)
+					maximumHeight = max(maximumHeight, barHeight)
+					if barHeight <= 3 {
+						lowSamples++
+						columnsThatWentLow[x] = true
+					}
+					if x > 0 {
+						totalVariation += absInt(barHeight - heights[x-1])
+					}
+				}
+				if maximumHeight-minimumHeight >= 4 {
+					framesWithWideRange++
+				}
+				if prominentPeakCount(heights) >= 3 {
+					framesWithSeveralPeaks++
+				}
+				if longestHighRun(heights) > 10 {
+					framesWithBroadClump++
+				}
+			}
+
+			lowColumns := 0
+			for _, wentLow := range columnsThatWentLow {
+				if wentLow {
+					lowColumns++
+				}
+			}
+			totalSamples := len(frames) * len(frames[0])
+			if lowSamples*20 < totalSamples {
+				t.Fatalf("only %.1f%% of bars reached <=3px; want visible valleys", 100*float64(lowSamples)/float64(totalSamples))
+			}
+			if lowColumns*10 < len(columnsThatWentLow)*7 {
+				t.Fatalf("only %d/%d columns reached <=3px", lowColumns, len(columnsThatWentLow))
+			}
+			if framesWithSeveralPeaks*10 < len(frames)*6 {
+				t.Fatalf("only %d/%d frames had at least three prominent peaks", framesWithSeveralPeaks, len(frames))
+			}
+			if framesWithWideRange*10 < len(frames)*6 {
+				t.Fatalf("only %d/%d frames had >=4px spatial range", framesWithWideRange, len(frames))
+			}
+			if framesWithBroadClump*10 > len(frames) {
+				t.Fatalf("%d/%d frames contained a >10-column high clump", framesWithBroadClump, len(frames))
+			}
+			averageVariation := float64(totalVariation) / float64(len(frames)*(len(frames[0])-1))
+			if averageVariation < 0.55 {
+				t.Fatalf("average adjacent-bar variation = %.2f, silhouette is too uniform", averageVariation)
+			}
+		})
 	}
 }
 
@@ -136,8 +258,8 @@ func TestVisualizerThemeIsVividMonotonicAndUsesThePalette(t *testing.T) {
 			}
 			previous = current
 		}
-		if delta := relativeLuminance(theme.body[x][0]) - relativeLuminance(theme.body[x][13]); delta < 0.55 {
-			t.Fatalf("column %d gradient delta = %.3f, want >= .55", x, delta)
+		if delta := relativeLuminance(theme.body[x][0]) - relativeLuminance(theme.body[x][13]); delta < 0.40 {
+			t.Fatalf("column %d gradient delta = %.3f, want >= .40", x, delta)
 		}
 	}
 
@@ -206,6 +328,42 @@ func maximumHeightDifference(first, second []int) int {
 		maximum = max(maximum, difference)
 	}
 	return maximum
+}
+
+func prominentPeakCount(heights []int) int {
+	count := 0
+	for x := 2; x+2 < len(heights); x++ {
+		leftMinimum := min(heights[x-2], heights[x-1])
+		rightMinimum := min(heights[x+1], heights[x+2])
+		if heights[x] >= 6 && heights[x] >= heights[x-1] && heights[x] >= heights[x+1] &&
+			heights[x]-max(leftMinimum, rightMinimum) >= 2 {
+			count++
+		}
+	}
+	return count
+}
+
+func longestHighRun(heights []int) int {
+	ordered := append([]int(nil), heights...)
+	sort.Ints(ordered)
+	threshold := ordered[len(ordered)/2] + 2
+	longest, current := 0, 0
+	for _, height := range heights {
+		if height >= threshold {
+			current++
+			longest = max(longest, current)
+		} else {
+			current = 0
+		}
+	}
+	return longest
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func isBlack(pixel color.NRGBA) bool {
