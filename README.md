@@ -2,13 +2,13 @@
 
 `busyctl` is a single, self-contained Go CLI for custom BUSY Bar apps. It uses the stock HTTP API; no custom firmware is required.
 
-Bundled apps include Apple Music now-playing, a full-screen clock, live Codex token activity, Minecraft server status, and live Muni arrivals:
+Bundled apps include Apple Music now-playing, live Minecraft server status, a full-screen clock, live Codex token activity, and live Muni arrivals:
 
 ```sh
 busyctl music
+busyctl minecraft
 busyctl clock
 busyctl tokens
-busyctl minecraft
 busyctl muni
 ```
 
@@ -80,7 +80,7 @@ busyctl minecraft
   <img src="docs/screenshots/minecraft.png" alt="Minecraft server status on the BUSY Bar" width="520">
 </p>
 
-The app watches `mc.matteing.com` every ten seconds. A slowly shimmering pixel-gradient creeper stays on the left while a glossy green or red status icon shows whether the server is online; the second row shows the current and maximum player counts. It talks directly to the Minecraft Java status protocol, so it does not send the server address or status through a third-party service.
+The app watches `homelab` by default every ten seconds. A bright wave sweeps across the pixel-gradient creeper in a smooth 3.2-second loop while nine randomized sparkles fade around its face. When the server goes offline, the animated creeper shifts to grayscale and the glossy green lamp becomes an identically lit red one with no symbol. A subdued second row shows the current and maximum player counts. It queries the Minecraft Java status protocol directly, so it never sends the server address or status through a third-party service.
 
 Use the `mc` alias or watch another Java server by passing a hostname with an optional port:
 

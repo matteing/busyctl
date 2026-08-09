@@ -13,11 +13,11 @@ import (
 
 const (
 	ApplicationID       = "busybar_minecraft"
-	defaultServer       = "mc.matteing.com"
+	defaultServer       = "homelab"
 	defaultPollInterval = 10 * time.Second
 	statusTimeout       = 4 * time.Second
 	logoFrameCount      = 32
-	logoFrameInterval   = 150 * time.Millisecond
+	logoFrameInterval   = 100 * time.Millisecond
 	displayWidth        = 72
 	outerPadding        = 1
 	logoSize            = 14
@@ -39,7 +39,7 @@ const (
 	statusOnlineColor   = "#70E36FFF"
 	statusOfflineColor  = "#FF615BFF"
 	statusCheckingColor = "#FFD166FF"
-	playersColor        = "#D0D0D0FF"
+	playersColor        = "#9CA3ACFF"
 )
 
 // Config contains the BUSY Bar and Minecraft server settings supplied by busyctl.
@@ -227,17 +227,19 @@ func (a *application) run(ctx context.Context) error {
 func (a *application) draw(ctx context.Context, snapshot displaySnapshot) error {
 	statusText, statusColor, statusAsset := "CHECKING", statusCheckingColor, checkingPath
 	playersText := "-- / --"
+	logoAsset := logoPath(a.logoFrame)
 	switch snapshot.Mode {
 	case modeOnline:
 		statusText, statusColor, statusAsset = "ONLINE", statusOnlineColor, onlinePath
 		playersText = fmt.Sprintf("%d / %d", snapshot.PlayersOnline, snapshot.PlayersMax)
 	case modeOffline:
 		statusText, statusColor, statusAsset = "OFFLINE", statusOfflineColor, offlinePath
+		logoAsset = offlineLogoPath(a.logoFrame)
 	}
 	zero := 0
 	opacity := 100
 	elements := []barapi.Element{
-		{ID: "logo", Type: "image", X: logoX, Y: logoY, Path: logoPath(a.logoFrame), Display: "front", Opacity: &opacity},
+		{ID: "logo", Type: "image", X: logoX, Y: logoY, Path: logoAsset, Display: "front", Opacity: &opacity},
 		{ID: "status-icon", Type: "image", X: contentX, Y: statusIconY, Path: statusAsset, Display: "front", Opacity: &opacity},
 		{
 			ID: "status", Type: "text", X: textX, Y: statusTextY, Text: statusText,

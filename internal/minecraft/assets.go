@@ -14,10 +14,26 @@ type displayAsset struct {
 	payload []byte
 }
 
+type sparkleEvent struct {
+	x        int
+	y        int
+	phase    float64
+	radius   float64
+	strength float64
+}
+
+// creeperSparkles uses a fixed seed so the uploaded animation is reproducible,
+// while its positions, timing, duration, and brightness still read as random.
+// Each sparkle fades over several frames instead of flickering on and off.
+var creeperSparkles = generateSparkleEvents(0xc0ffee)
+
 func minecraftAssets() []displayAsset {
-	assets := make([]displayAsset, 0, logoFrameCount+4)
+	assets := make([]displayAsset, 0, 2*logoFrameCount+4)
 	for frame := 0; frame < logoFrameCount; frame++ {
 		assets = append(assets, displayAsset{path: logoPath(frame), payload: creeperLogoPNG(frame)})
+	}
+	for frame := 0; frame < logoFrameCount; frame++ {
+		assets = append(assets, displayAsset{path: offlineLogoPath(frame), payload: offlineCreeperLogoPNG(frame)})
 	}
 	return append(assets,
 		displayAsset{path: onlinePath, payload: statusPNG(true)},
@@ -27,15 +43,19 @@ func minecraftAssets() []displayAsset {
 	)
 }
 
-// creeperLogoPNG builds one frame of a slow, seamless diagonal shimmer. The
-// face remains fixed while the green gradient and two tiny glints ease through
-// a roughly five-second loop.
+// creeperLogoPNG builds one frame of a bright, seamless diagonal shimmer. The
+// face remains fixed while scattered glints fade in and out around it over a
+// roughly three-second loop.
 func creeperLogoPNG(frame int) []byte {
+	return encodePNG(creeperLogoImage(frame))
+}
+
+func creeperLogoImage(frame int) *image.NRGBA {
 	canvas := image.NewNRGBA(image.Rect(0, 0, logoSize, logoSize))
 	phase := float64(frame%logoFrameCount) / float64(logoFrameCount)
 	topLeft := color.NRGBA{R: 0x78, G: 0xe8, B: 0x5b, A: 0xff}
 	bottomRight := color.NRGBA{R: 0x13, G: 0x63, B: 0x43, A: 0xff}
-	shimmer := color.NRGBA{R: 0xc8, G: 0xff, B: 0xa8, A: 0xff}
+	shimmer := color.NRGBA{R: 0xed, G: 0xff, B: 0xd5, A: 0xff}
 	texture := [...]int{-10, 8, 0, 13, -6, 5}
 	for y := 0; y < logoSize; y++ {
 		for x := 0; x < logoSize; x++ {
@@ -43,7 +63,7 @@ func creeperLogoPNG(frame int) []byte {
 			base := mixColor(topLeft, bottomRight, gradient)
 			base = shiftColor(base, texture[(x/2+3*(y/2)+(x*y)%2)%len(texture)])
 			wave := 0.5 + 0.5*math.Cos(2*math.Pi*(phase-gradient))
-			light := 0.22 * math.Pow(wave, 7)
+			light := 0.43 * math.Pow(wave, 4)
 			canvas.SetNRGBA(x, y, mixColor(base, shimmer, light))
 		}
 	}
@@ -60,30 +80,35 @@ func creeperLogoPNG(frame int) []byte {
 	fillRect(canvas, 4, 8, 6, 3, face)
 	fillRect(canvas, 4, 11, 2, 2, face)
 	fillRect(canvas, 8, 11, 2, 2, face)
-	paintSparkle(canvas, 6, 1, phase, 0)
-	paintSparkle(canvas, 12, 8, phase, 0.43)
+	paintSparkles(canvas, phase)
+	return canvas
+}
+
+// offlineCreeperLogoPNG preserves the moving wave and sparkles but removes all
+// hue and lowers luminance slightly so an unreachable server reads as inactive.
+func offlineCreeperLogoPNG(frame int) []byte {
+	canvas := creeperLogoImage(frame)
+	for y := 0; y < logoSize; y++ {
+		for x := 0; x < logoSize; x++ {
+			pixel := canvas.NRGBAAt(x, y)
+			if pixel.A == 0 {
+				continue
+			}
+			luminance := uint8((54*uint16(pixel.R) + 183*uint16(pixel.G) + 19*uint16(pixel.B) + 128) >> 8)
+			luminance = uint8(math.Round(float64(luminance) * 0.72))
+			canvas.SetNRGBA(x, y, color.NRGBA{R: luminance, G: luminance, B: luminance, A: pixel.A})
+		}
+	}
 	return encodePNG(canvas)
 }
 
 func statusPNG(online bool) []byte {
-	if online {
-		return onlineButtonPNG()
-	}
-	canvas := image.NewNRGBA(image.Rect(0, 0, iconSize, iconSize))
-	fill := color.NRGBA{R: 0xff, G: 0x57, B: 0x52, A: 0xff}
-	paintDisc(canvas, fill)
-	white := color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
-	points := [][2]int{{1, 1}, {3, 1}, {2, 2}, {1, 3}, {3, 3}}
-	for _, point := range points {
-		canvas.SetNRGBA(point[0], point[1], white)
-	}
-	return encodePNG(canvas)
+	return glossyStatusButtonPNG(online)
 }
 
-// onlineButtonPNG is a tiny glossy status lamp: a mint specular highlight in
-// the upper-left eases through saturated green into a deep lower-right rim.
-// The lighting supplies the online affordance without drawing a checkmark.
-func onlineButtonPNG() []byte {
+// glossyStatusButtonPNG uses one lighting model for both states. Offline swaps
+// the green and red channels, retaining the same highlight and rim with no X.
+func glossyStatusButtonPNG(online bool) []byte {
 	transparent := color.NRGBA{}
 	pixels := [iconSize][iconSize]color.NRGBA{
 		{transparent, rgba(0x70, 0xff, 0x8c), rgba(0x55, 0xef, 0x73), rgba(0x2b, 0xb9, 0x50), transparent},
@@ -95,6 +120,9 @@ func onlineButtonPNG() []byte {
 	canvas := image.NewNRGBA(image.Rect(0, 0, iconSize, iconSize))
 	for y, row := range pixels {
 		for x, pixel := range row {
+			if !online && pixel.A != 0 {
+				pixel.R, pixel.G = pixel.G, pixel.R
+			}
 			canvas.SetNRGBA(x, y, pixel)
 		}
 	}
@@ -113,8 +141,8 @@ func checkingPNG() []byte {
 
 func playersPNG() []byte {
 	canvas := image.NewNRGBA(image.Rect(0, 0, iconSize, iconSize))
-	light := color.NRGBA{R: 0xd8, G: 0xd8, B: 0xd8, A: 0xff}
-	shade := color.NRGBA{R: 0x83, G: 0x8a, B: 0x93, A: 0xff}
+	light := color.NRGBA{R: 0xa4, G: 0xaa, B: 0xb2, A: 0xff}
+	shade := color.NRGBA{R: 0x62, G: 0x6a, B: 0x75, A: 0xff}
 	fillRect(canvas, 1, 0, 3, 3, light)
 	canvas.SetNRGBA(1, 1, shade)
 	canvas.SetNRGBA(3, 1, shade)
@@ -141,15 +169,85 @@ func fillRect(canvas *image.NRGBA, x, y, width, height int, fill color.NRGBA) {
 	}
 }
 
-func paintSparkle(canvas *image.NRGBA, x, y int, phase, offset float64) {
-	pulse := 0.5 + 0.5*math.Cos(2*math.Pi*(phase+offset))
-	pulse = pulse * pulse * (3 - 2*pulse)
-	center := color.NRGBA{R: 0xee, G: 0xff, B: 0xd9, A: 0xff}
-	halo := color.NRGBA{R: 0xa8, G: 0xff, B: 0x83, A: 0xff}
-	lightenPixel(canvas, x, y, center, 0.22+0.72*pulse)
-	for _, point := range [][2]int{{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}} {
-		if point[0] >= 0 && point[0] < logoSize && point[1] >= 0 && point[1] < logoSize {
-			lightenPixel(canvas, point[0], point[1], halo, 0.04+0.28*pulse)
+func generateSparkleEvents(seed uint32) []sparkleEvent {
+	const count = 9
+	state := seed
+	next := func() uint32 {
+		state = state*1664525 + 1013904223
+		return state
+	}
+	randomUnit := func() float64 {
+		return float64(next()) / float64(^uint32(0))
+	}
+	randomIndex := func(length int) int {
+		return int(uint64(next()) * uint64(length) >> 32)
+	}
+
+	events := make([]sparkleEvent, 0, count)
+	for attempts := 0; len(events) < count && attempts < 512; attempts++ {
+		x := 1 + randomIndex(logoSize-2)
+		y := 1 + randomIndex(logoSize-2)
+		if !sparkleFits(x, y) || sparkleLocationUsed(events, x, y) {
+			continue
+		}
+
+		// Split the loop into broad time buckets, then jitter within each one.
+		// This avoids long empty stretches without making the rhythm regular.
+		bucket := float64(len(events)) / count
+		phase := math.Mod(bucket+(randomUnit()-0.5)/count+1, 1)
+		events = append(events, sparkleEvent{
+			x: x, y: y, phase: phase,
+			radius:   0.14 + 0.05*randomUnit(),
+			strength: 0.78 + 0.22*randomUnit(),
+		})
+	}
+	return events
+}
+
+func sparkleLocationUsed(events []sparkleEvent, x, y int) bool {
+	for _, event := range events {
+		if event.x == x && event.y == y {
+			return true
+		}
+	}
+	return false
+}
+
+func sparkleFits(x, y int) bool {
+	for _, point := range [][2]int{{x, y}, {x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}} {
+		if point[0] < 0 || point[0] >= logoSize || point[1] < 0 || point[1] >= logoSize || creeperFacePixel(point[0], point[1]) {
+			return false
+		}
+	}
+	return true
+}
+
+func creeperFacePixel(x, y int) bool {
+	return (x >= 2 && x <= 4 && y >= 3 && y <= 5) ||
+		(x >= 9 && x <= 11 && y >= 3 && y <= 5) ||
+		(x >= 6 && x <= 7 && y >= 6 && y <= 8) ||
+		(x >= 4 && x <= 9 && y >= 8 && y <= 10) ||
+		(x >= 4 && x <= 5 && y >= 11 && y <= 12) ||
+		(x >= 8 && x <= 9 && y >= 11 && y <= 12)
+}
+
+func paintSparkles(canvas *image.NRGBA, phase float64) {
+	center := color.NRGBA{R: 0xff, G: 0xff, B: 0xef, A: 0xff}
+	halo := color.NRGBA{R: 0xc4, G: 0xff, B: 0x9e, A: 0xff}
+	for _, event := range creeperSparkles {
+		distance := math.Abs(phase - event.phase)
+		if distance > 0.5 {
+			distance = 1 - distance
+		}
+		if distance >= event.radius {
+			continue
+		}
+		pulse := 1 - distance/event.radius
+		pulse = pulse * pulse * (3 - 2*pulse)
+		pulse *= event.strength
+		lightenPixel(canvas, event.x, event.y, center, 0.86*pulse)
+		for _, point := range [][2]int{{event.x - 1, event.y}, {event.x + 1, event.y}, {event.x, event.y - 1}, {event.x, event.y + 1}} {
+			lightenPixel(canvas, point[0], point[1], halo, 0.38*pulse)
 		}
 	}
 }
@@ -190,6 +288,10 @@ func rgba(red, green, blue uint8) color.NRGBA {
 
 func logoPath(frame int) string {
 	return fmt.Sprintf("minecraft-%02d.png", frame%logoFrameCount)
+}
+
+func offlineLogoPath(frame int) string {
+	return fmt.Sprintf("minecraft-offline-%02d.png", frame%logoFrameCount)
 }
 
 func encodePNG(canvas image.Image) []byte {
