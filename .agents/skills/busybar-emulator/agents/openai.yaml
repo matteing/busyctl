@@ -1,0 +1,4 @@
+interface:
+  display_name: "BUSY Bar Emulator"
+  short_description: "Develop and test BUSY Bar apps locally"
+  default_prompt: "Use $busybar-emulator to run and visually verify this BUSY Bar app locally."

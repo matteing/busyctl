@@ -1,0 +1,4 @@
+interface:
+  display_name: "BUSY Bar Screenshots"
+  short_description: "Capture transparent README device shots"
+  default_prompt: "Use $busybar-screenshots to refresh this app’s canonical README screenshot."

@@ -15,6 +15,15 @@ go build -trimpath -o bin/busyctl ./cmd/busyctl
 Keep pull requests focused and include tests for new behavior. Run `gofmt` on
 changed Go files before opening a pull request.
 
+### Codex workflows
+
+Codex automatically discovers the repository-local skills for the
+[BUSY Bar emulator workflow](.agents/skills/busybar-emulator/SKILL.md) and the
+[canonical README screenshot workflow](.agents/skills/busybar-screenshots/SKILL.md).
+Use them when developing or visually documenting an app so emulator safety,
+deterministic fixtures, transparent shell treatment, and cleanup stay
+consistent.
+
 ## Releases
 
 Releases are generated from annotated semantic-version tags. After the release
