@@ -6,6 +6,7 @@ import (
 	"github.com/matteing/busyctl/internal/applemusic"
 	"github.com/matteing/busyctl/internal/clock"
 	"github.com/matteing/busyctl/internal/codextokens"
+	"github.com/matteing/busyctl/internal/minecraft"
 	"github.com/matteing/busyctl/internal/muni"
 	"github.com/spf13/cobra"
 )
@@ -15,6 +16,7 @@ var version = "dev"
 type AppleMusicRunner func(context.Context, applemusic.Config) error
 type ClockRunner func(context.Context, clock.Config) error
 type CodexTokensRunner func(context.Context, codextokens.Config) error
+type MinecraftRunner func(context.Context, minecraft.Config) error
 type MuniRunner func(context.Context, muni.Config) error
 
 type deviceFlags struct {
@@ -39,6 +41,10 @@ func newRootCommandWithMuni(runAppleMusic AppleMusicRunner, runClock ClockRunner
 }
 
 func newRootCommandWithApps(runAppleMusic AppleMusicRunner, runClock ClockRunner, runMuni MuniRunner, runCodexTokens CodexTokensRunner) *cobra.Command {
+	return newRootCommandWithAllApps(runAppleMusic, runClock, runMuni, runCodexTokens, nil)
+}
+
+func newRootCommandWithAllApps(runAppleMusic AppleMusicRunner, runClock ClockRunner, runMuni MuniRunner, runCodexTokens CodexTokensRunner, runMinecraft MinecraftRunner) *cobra.Command {
 	if runAppleMusic == nil {
 		runAppleMusic = applemusic.Run
 	}
@@ -50,6 +56,9 @@ func newRootCommandWithApps(runAppleMusic AppleMusicRunner, runClock ClockRunner
 	}
 	if runCodexTokens == nil {
 		runCodexTokens = codextokens.Run
+	}
+	if runMinecraft == nil {
+		runMinecraft = minecraft.Run
 	}
 	defaults := applemusic.DefaultConfig()
 	device := deviceFlags{
@@ -84,6 +93,7 @@ func newRootCommandWithApps(runAppleMusic AppleMusicRunner, runClock ClockRunner
 	root.AddCommand(newAppleMusicCommand(&device, defaults, runAppleMusic))
 	root.AddCommand(newClockCommand(&device, clock.DefaultConfig(), runClock))
 	root.AddCommand(newCodexTokensCommand(&device, codextokens.DefaultConfig(), runCodexTokens))
+	root.AddCommand(newMinecraftCommand(&device, minecraft.DefaultConfig(), runMinecraft))
 	root.AddCommand(newMuniCommand(&device, muni.DefaultConfig(), runMuni))
 	return root
 }

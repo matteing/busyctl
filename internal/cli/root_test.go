@@ -11,6 +11,7 @@ import (
 	"github.com/matteing/busyctl/internal/applemusic"
 	"github.com/matteing/busyctl/internal/clock"
 	"github.com/matteing/busyctl/internal/codextokens"
+	"github.com/matteing/busyctl/internal/minecraft"
 	"github.com/matteing/busyctl/internal/muni"
 )
 
@@ -30,8 +31,72 @@ func TestRootHelpDoesNotRunAnApp(t *testing.T) {
 	if called {
 		t.Fatal("root help contacted an app runner")
 	}
-	if text := output.String(); !strings.Contains(text, "music") || !strings.Contains(text, "clock") || !strings.Contains(text, "tokens") || !strings.Contains(text, "muni") || !strings.Contains(text, "--host") {
+	if text := output.String(); !strings.Contains(text, "music") || !strings.Contains(text, "clock") || !strings.Contains(text, "tokens") || !strings.Contains(text, "minecraft") || !strings.Contains(text, "muni") || !strings.Contains(text, "--host") {
 		t.Fatalf("root help is incomplete:\n%s", text)
+	}
+}
+
+func TestMinecraftFlagsReachRunner(t *testing.T) {
+	t.Setenv("BUSYBAR_HOST", "")
+	t.Setenv("BUSYBAR_TOKEN", "")
+	t.Setenv("MINECRAFT_SERVER", "")
+	var captured minecraft.Config
+	command := newRootCommandWithAllApps(nil, nil, nil, nil, func(_ context.Context, config minecraft.Config) error {
+		captured = config
+		return nil
+	})
+	command.SetArgs([]string{
+		"minecraft", "play.example.net:25570",
+		"--poll", "30s",
+		"--priority", "41",
+		"--keep-display",
+	})
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if captured.Server != "play.example.net:25570" || captured.PollInterval != 30*time.Second || captured.Priority != 41 || !captured.KeepDisplay {
+		t.Fatalf("Minecraft config = %#v", captured)
+	}
+}
+
+func TestMinecraftDefaultsAndAliasReachRunner(t *testing.T) {
+	t.Setenv("BUSYBAR_HOST", "")
+	t.Setenv("BUSYBAR_TOKEN", "")
+	t.Setenv("MINECRAFT_SERVER", "")
+	var captured minecraft.Config
+	command := newRootCommandWithAllApps(nil, nil, nil, nil, func(_ context.Context, config minecraft.Config) error {
+		captured = config
+		return nil
+	})
+	command.SetArgs([]string{"mc"})
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if want := minecraft.DefaultConfig(); captured != want {
+		t.Fatalf("default Minecraft config = %#v, want %#v", captured, want)
+	}
+}
+
+func TestInvalidMinecraftInputNeverRuns(t *testing.T) {
+	for name, args := range map[string][]string{
+		"both server forms": {"minecraft", "one.example", "--server", "two.example"},
+		"invalid port":      {"minecraft", "example.com:70000"},
+		"fast polling":      {"minecraft", "--poll", "500ms"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			called := false
+			command := newRootCommandWithAllApps(nil, nil, nil, nil, func(context.Context, minecraft.Config) error {
+				called = true
+				return nil
+			})
+			command.SetArgs(args)
+			if err := command.ExecuteContext(context.Background()); err == nil {
+				t.Fatalf("%v unexpectedly succeeded", args)
+			}
+			if called {
+				t.Fatalf("%v invoked the runner", args)
+			}
+		})
 	}
 }
 
