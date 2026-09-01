@@ -3,7 +3,7 @@ module github.com/matteing/busyctl
 go 1.26.5
 
 require (
-	github.com/coder/websocket v1.8.14
+	github.com/coder/websocket v1.8.15
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.54.0
 )
